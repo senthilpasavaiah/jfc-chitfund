@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  /* Palette: a ledger-book identity - deep teal cover, warm gold (chit/gold
+     savings tradition), cool paper background. Deliberately not the
+     cream+terracotta or near-black+neon defaults. */
+  --color-paper: #F4F5F1;
+  --color-paper-raised: #FFFFFF;
+  --color-ink: #1C2426;
+  --color-ink-muted: #5B6A6E;
+  --color-ledger: #123A47;      /* deep teal-navy: sidebar, headers */
+  --color-ledger-light: #1E5266;
+  --color-gold: #C08A2E;        /* accent: gold-chit tradition */
+  --color-gold-light: #E4B563;
+  --color-success: #2E7D4F;
+  --color-danger: #B34435;
+  --color-line: #DDE1DA;
+
+  --font-display: "Fraunces", "Georgia", serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+  .font-tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  .ledger-card {
+    background: var(--color-paper-raised);
+    border: 1px solid var(--color-line);
+    border-radius: 0.75rem;
+  }
+}

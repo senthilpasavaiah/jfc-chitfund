@@ -1,0 +1,383 @@
+// ============================================================================
+// Jolly Friends Club — Chit Fund Management System
+// Prisma schema (PostgreSQL)
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// ENUMS
+// ----------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  MANAGER
+  COLLECTOR
+  MEMBER
+}
+
+enum ChitStatus {
+  DRAFT // being configured, not yet started
+  ACTIVE // running, accepting installments/auctions
+  CLOSED // completed all months
+  CANCELLED
+}
+
+enum InstallmentStatus {
+  PENDING
+  PAID
+  LATE
+  WAIVED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  UPI
+  CHEQUE
+  OTHER
+}
+
+enum AuctionStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum NotificationChannel {
+  SMS
+  WHATSAPP
+  EMAIL
+  PUSH
+}
+
+enum NotificationType {
+  PAYMENT_REMINDER
+  AUCTION_REMINDER
+  PAYMENT_RECEIVED
+  CHIT_STARTED
+  CHIT_CLOSED
+  AUCTION_WON
+  GENERAL
+}
+
+enum NotificationStatus {
+  PENDING // queued, not yet "sent" (no live provider wired up in this environment)
+  LOGGED // intent logged - see NotificationChannel note in service layer
+  FAILED
+}
+
+enum ExpenseCategory {
+  OFFICE
+  MISCELLANEOUS
+}
+
+// ----------------------------------------------------------------------------
+// AUTH / USERS
+// ----------------------------------------------------------------------------
+
+model User {
+  id                String    @id @default(uuid())
+  email             String?   @unique
+  phone             String    @unique
+  passwordHash      String
+  role              Role      @default(MEMBER)
+  isActive          Boolean   @default(true)
+  mustChangePassword Boolean  @default(false)
+  lastLoginAt       DateTime?
+  failedLoginCount  Int       @default(0)
+  lockedUntil       DateTime?
+
+  member            Member?
+
+  refreshTokens     RefreshToken[]
+  auditLogs         AuditLog[]
+  passwordResets    PasswordResetToken[]
+  notificationsSent Notification[]        @relation("NotificationCreatedBy")
+  paymentsRecorded  Payment[]              @relation("PaymentRecordedBy")
+  expensesRecorded  Expense[]              @relation("ExpenseRecordedBy")
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([role])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+// ----------------------------------------------------------------------------
+// MEMBERS
+// ----------------------------------------------------------------------------
+
+model Member {
+  id               String    @id @default(uuid())
+  userId           String?   @unique
+  user             User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  name             String
+  photoUrl         String?
+  mobileNumber     String    @unique
+  whatsappNumber   String?
+  email            String?
+  permanentAddress String?
+  currentAddress   String?
+
+  // Sensitive: encrypted at rest via application-layer encryption (see utils/crypto.js)
+  aadhaarEncrypted String?
+  aadhaarLast4     String? // safe to display/search on
+
+  status           MemberStatus @default(ACTIVE)
+  joinedDate       DateTime  @default(now())
+  notes            String?
+
+  documents        MemberDocument[]
+  chitMemberships   ChitMember[]
+  paymentsMade     Payment[]         @relation("PaymentByMember")
+  auctionsWon      Auction[]         @relation("AuctionWinner")
+  notificationsReceived Notification[] @relation("NotificationToMember")
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([status])
+  @@index([name])
+  @@map("members")
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model MemberDocument {
+  id         String   @id @default(uuid())
+  memberId   String
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  label      String
+  fileUrl    String
+  uploadedAt DateTime @default(now())
+
+  @@index([memberId])
+  @@map("member_documents")
+}
+
+// ----------------------------------------------------------------------------
+// CHIT
+// ----------------------------------------------------------------------------
+
+model Chit {
+  id                String     @id @default(uuid())
+  refNumber         String     @unique
+  name              String
+  chitValue         Decimal    @db.Decimal(14, 2) // total pot value
+  totalMonths        Int
+  monthlyInstallment Decimal   @db.Decimal(14, 2)
+  commissionPercent  Decimal   @db.Decimal(5, 2) @default(5.00) // foreman/organizer commission
+  startDate         DateTime?
+  endDate           DateTime?
+  status            ChitStatus @default(DRAFT)
+
+  members           ChitMember[]
+  installments      Installment[]
+  auctions          Auction[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([status])
+  @@map("chits")
+}
+
+model ChitMember {
+  id        String   @id @default(uuid())
+  chitId    String
+  chit      Chit     @relation(fields: [chitId], references: [id], onDelete: Cascade)
+  memberId  String
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  slotNumber Int? // ticket/slot number within the chit
+  joinedAt  DateTime @default(now())
+  isActive  Boolean  @default(true)
+
+  @@unique([chitId, memberId])
+  @@index([chitId])
+  @@index([memberId])
+  @@map("chit_members")
+}
+
+// One row per member per month per chit
+model Installment {
+  id          String            @id @default(uuid())
+  chitId      String
+  chit        Chit              @relation(fields: [chitId], references: [id], onDelete: Cascade)
+  memberId    String
+  monthNumber Int
+  dueDate     DateTime
+  baseAmount  Decimal           @db.Decimal(14, 2)
+  fineAmount  Decimal           @db.Decimal(14, 2) @default(0)
+  dividendAdjustment Decimal    @db.Decimal(14, 2) @default(0) // non-winners get a dividend credit that month
+  status      InstallmentStatus @default(PENDING)
+
+  payments    Payment[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([chitId, memberId, monthNumber])
+  @@index([chitId, monthNumber])
+  @@index([status])
+  @@map("installments")
+}
+
+// ----------------------------------------------------------------------------
+// PAYMENTS
+// ----------------------------------------------------------------------------
+
+model Payment {
+  id              String        @id @default(uuid())
+  installmentId   String
+  installment     Installment   @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+  memberId        String
+  member          Member        @relation("PaymentByMember", fields: [memberId], references: [id])
+  amount          Decimal       @db.Decimal(14, 2)
+  method          PaymentMethod @default(CASH)
+  referenceNumber String?
+  paidAt          DateTime      @default(now())
+  recordedById    String
+  recordedBy      User          @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+  receiptNumber   String        @unique
+  isAdvance       Boolean       @default(false)
+  notes           String?
+
+  createdAt       DateTime @default(now())
+
+  @@index([memberId])
+  @@index([installmentId])
+  @@map("payments")
+}
+
+// ----------------------------------------------------------------------------
+// AUCTIONS
+// ----------------------------------------------------------------------------
+
+model Auction {
+  id               String        @id @default(uuid())
+  chitId           String
+  chit             Chit          @relation(fields: [chitId], references: [id], onDelete: Cascade)
+  monthNumber      Int
+  scheduledDate    DateTime
+  status           AuctionStatus @default(SCHEDULED)
+
+  winnerId         String?
+  winner           Member?       @relation("AuctionWinner", fields: [winnerId], references: [id])
+  discountAmount   Decimal?      @db.Decimal(14, 2) // amount bid down from chit value
+  dividendPerMember Decimal?     @db.Decimal(14, 2) // discount minus commission, split among non-winners
+  organizerCommission Decimal?   @db.Decimal(14, 2)
+  notes            String?
+  completedAt      DateTime?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([chitId, monthNumber])
+  @@index([chitId])
+  @@map("auctions")
+}
+
+// ----------------------------------------------------------------------------
+// EXPENSES
+// ----------------------------------------------------------------------------
+
+model Expense {
+  id           String          @id @default(uuid())
+  category     ExpenseCategory
+  description  String
+  amount       Decimal         @db.Decimal(14, 2)
+  spentAt      DateTime        @default(now())
+  recordedById String
+  recordedBy   User            @relation("ExpenseRecordedBy", fields: [recordedById], references: [id])
+
+  createdAt    DateTime @default(now())
+
+  @@index([category])
+  @@map("expenses")
+}
+
+// ----------------------------------------------------------------------------
+// NOTIFICATIONS
+// (No live provider is wired up in this build environment — see
+//  services/notification.service.js. Every call is persisted here so the
+//  intent, recipient, and content are auditable and ready to plug into
+//  Twilio / Meta WhatsApp Cloud API / SendGrid later.)
+// ----------------------------------------------------------------------------
+
+model Notification {
+  id          String              @id @default(uuid())
+  memberId    String?
+  member      Member?             @relation("NotificationToMember", fields: [memberId], references: [id], onDelete: SetNull)
+  channel     NotificationChannel
+  type        NotificationType
+  subject     String?
+  body        String
+  status      NotificationStatus  @default(LOGGED)
+  createdById String
+  createdBy   User                @relation("NotificationCreatedBy", fields: [createdById], references: [id])
+
+  createdAt   DateTime @default(now())
+
+  @@index([memberId])
+  @@index([status])
+  @@map("notifications")
+}
+
+// ----------------------------------------------------------------------------
+// AUDIT LOG
+// ----------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String // e.g. "MEMBER_CREATE", "PAYMENT_RECORD", "AUCTION_COMPLETE"
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
