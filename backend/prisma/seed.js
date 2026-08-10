@@ -9,8 +9,8 @@ async function seed() {
 
     const adminHash = await bcrypt.hash('Admin@123', 12);
     const adminResult = await client.query(
-      `INSERT INTO users (phone, email, password_hash, role)
-       VALUES ('9000000001', 'admin@jfc.local', $1, 'ADMIN')
+      `INSERT INTO users (phone, email, password_hash, role, login_username)
+       VALUES ('9000000001', 'admin@jfc.local', $1, 'ADMIN', 'Admin')
        ON CONFLICT (phone) DO NOTHING RETURNING id`,
       [adminHash]
     );

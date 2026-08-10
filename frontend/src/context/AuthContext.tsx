@@ -5,7 +5,10 @@ import type { User } from '../types';
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  login: (phone: string, password: string) => Promise<void>;
+  loginAdmin: (username: string, password: string) => Promise<void>;
+  checkAadhaar: (aadhaarLast4: string) => Promise<{ memberName: string; needsPasswordSetup: boolean }>;
+  setPasswordAadhaar: (aadhaarLast4: string, password: string) => Promise<void>;
+  loginAadhaar: (aadhaarLast4: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -31,8 +34,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  async function login(phone: string, password: string) {
-    const res = await client.post('/auth/login', { phone, password });
+  async function loginAdmin(identifier: string, password: string) {
+    const res = await client.post('/auth/login-username', { identifier, password });
+    setAccessToken(res.data.data.accessToken);
+    setUser(res.data.data.user);
+  }
+
+  async function checkAadhaar(aadhaarLast4: string) {
+    const res = await client.post('/auth/check-aadhaar', { aadhaarLast4 });
+    return res.data.data as { memberName: string; needsPasswordSetup: boolean };
+  }
+
+  async function setPasswordAadhaar(aadhaarLast4: string, password: string) {
+    const res = await client.post('/auth/set-password-aadhaar', { aadhaarLast4, password });
+    setAccessToken(res.data.data.accessToken);
+    setUser(res.data.data.user);
+  }
+
+  async function loginAadhaar(aadhaarLast4: string, password: string) {
+    const res = await client.post('/auth/login-aadhaar', { aadhaarLast4, password });
     setAccessToken(res.data.data.accessToken);
     setUser(res.data.data.user);
   }
@@ -43,7 +63,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
-  return <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, loading, loginAdmin, checkAadhaar, setPasswordAadhaar, loginAadhaar, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

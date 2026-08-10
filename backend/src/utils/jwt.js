@@ -10,9 +10,14 @@ function signAccessToken(user) {
 }
 
 function signRefreshToken(user) {
-  return jwt.sign({ sub: user.id, type: 'refresh' }, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
-  });
+  // jti ensures two tokens issued in the same second (e.g. set-password
+  // immediately followed by a login) never hash to the same value, which
+  // would otherwise collide against the refresh_tokens unique constraint.
+  return jwt.sign(
+    { sub: user.id, type: 'refresh', jti: crypto.randomBytes(12).toString('hex') },
+    process.env.JWT_REFRESH_SECRET,
+    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }
+  );
 }
 
 function verifyAccessToken(token) {

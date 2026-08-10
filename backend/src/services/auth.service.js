@@ -40,6 +40,146 @@ async function register({ name, phone, email, password, role, whatsappNumber }) 
   });
 }
 
+/**
+ * Issues tokens + updates login bookkeeping for an already-verified user row.
+ * Shared by every login path (phone/password, username/password, Aadhaar).
+ */
+async function issueSessionForUser(user) {
+  await query(
+    `UPDATE users SET failed_login_count = 0, locked_until = NULL, last_login_at = now() WHERE id = $1`,
+    [user.id]
+  );
+  const safeUser = { id: user.id, email: user.email, phone: user.phone, role: user.role };
+  const accessToken = signAccessToken(safeUser);
+  const refreshToken = signRefreshToken(safeUser);
+  const decoded = verifyRefreshToken(refreshToken);
+  await query(
+    `INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, to_timestamp($3))`,
+    [user.id, hashToken(refreshToken), decoded.exp]
+  );
+  return { user: safeUser, accessToken, refreshToken };
+}
+
+/**
+ * Login with an "identifier" that can be either a phone number or a
+ * reserved text username (e.g. the Admin account's "Admin" login).
+ */
+async function loginWithIdentifier({ identifier, password }) {
+  const { rows } = await query('SELECT * FROM users WHERE phone = $1 OR login_username = $1', [identifier]);
+  const user = rows[0];
+
+  const dummyHash = '$2a$12$CwTycUXWue0Thq9StjUM0uJ8ZpGoNMSAwYP8V9C1LpLoRHrpAO2Fu';
+  if (!user || !user.password_hash) {
+    // Still run a compare against a dummy hash so response timing doesn't
+    // leak whether the account exists.
+    await bcrypt.compare(password, dummyHash);
+    throw ApiError.unauthorized('Invalid login or password');
+  }
+
+  if (user.locked_until && new Date(user.locked_until) > new Date()) {
+    const minsLeft = Math.ceil((new Date(user.locked_until) - new Date()) / 60000);
+    throw ApiError.forbidden(`Account locked due to repeated failed logins. Try again in ${minsLeft} minute(s).`);
+  }
+  if (!user.is_active) throw ApiError.forbidden('This account has been deactivated');
+
+  const isMatch = await bcrypt.compare(password, user.password_hash);
+  if (!isMatch) {
+    const failedCount = user.failed_login_count + 1;
+    const shouldLock = failedCount >= MAX_FAILED_ATTEMPTS;
+    await query(`UPDATE users SET failed_login_count = $1, locked_until = $2 WHERE id = $3`, [
+      shouldLock ? 0 : failedCount,
+      shouldLock ? new Date(Date.now() + LOCKOUT_MINUTES * 60000) : null,
+      user.id,
+    ]);
+    throw ApiError.unauthorized('Invalid login or password');
+  }
+
+  return issueSessionForUser(user);
+}
+
+/**
+ * Step 1 of the member Aadhaar login flow: resolve which member the last-4
+ * digits belong to (must match exactly one active member), and tell the
+ * frontend whether this is a first-time login (needs to set a password) or
+ * a returning login (needs to enter their existing password).
+ */
+async function checkAadhaar(aadhaarLast4) {
+  const { rows } = await query(
+    `SELECT m.id AS member_id, m.name, m.user_id FROM members m WHERE m.aadhaar_last4 = $1 AND m.status = 'ACTIVE'`,
+    [aadhaarLast4]
+  );
+  if (rows.length === 0) {
+    throw ApiError.unauthorized("Invalid Member ID. These digits don't match any registered Aadhaar.");
+  }
+  if (rows.length > 1) {
+    throw ApiError.badRequest('More than one member matches these last 4 digits. Please contact your administrator.');
+  }
+  const member = rows[0];
+  if (!member.user_id) {
+    throw ApiError.badRequest('No login account is set up for this member yet. Please contact your administrator.');
+  }
+  const { rows: userRows } = await query('SELECT id, password_hash FROM users WHERE id = $1', [member.user_id]);
+  const user = userRows[0];
+  if (!user) throw ApiError.badRequest('No login account is set up for this member yet. Please contact your administrator.');
+
+  return { memberName: member.name, needsPasswordSetup: !user.password_hash };
+}
+
+/** Step 2a (first-time): sets the password for a member resolved by Aadhaar, then logs them in. */
+async function setPasswordViaAadhaar(aadhaarLast4, newPassword) {
+  const { rows } = await query(
+    `SELECT m.user_id FROM members m WHERE m.aadhaar_last4 = $1 AND m.status = 'ACTIVE'`,
+    [aadhaarLast4]
+  );
+  if (rows.length !== 1 || !rows[0].user_id) throw ApiError.badRequest('Could not resolve this member. Please contact your administrator.');
+
+  const { rows: userRows } = await query('SELECT * FROM users WHERE id = $1', [rows[0].user_id]);
+  const user = userRows[0];
+  if (!user) throw ApiError.notFound('Account not found');
+  if (user.password_hash) throw ApiError.badRequest('A password is already set for this account. Please log in instead.');
+
+  const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  await query('UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2', [passwordHash, user.id]);
+
+  return issueSessionForUser({ ...user, password_hash: passwordHash });
+}
+
+/** Step 2b (returning): verifies a member's password, resolved by Aadhaar. */
+async function loginViaAadhaar(aadhaarLast4, password) {
+  const { rows } = await query(
+    `SELECT m.user_id FROM members m WHERE m.aadhaar_last4 = $1 AND m.status = 'ACTIVE'`,
+    [aadhaarLast4]
+  );
+  if (rows.length !== 1 || !rows[0].user_id) throw ApiError.unauthorized('Invalid Member ID or password.');
+
+  const { rows: userRows } = await query('SELECT * FROM users WHERE id = $1', [rows[0].user_id]);
+  const user = userRows[0];
+  const dummyHash = '$2a$12$CwTycUXWue0Thq9StjUM0uJ8ZpGoNMSAwYP8V9C1LpLoRHrpAO2Fu';
+  if (!user || !user.password_hash) {
+    await bcrypt.compare(password, dummyHash);
+    throw ApiError.unauthorized('Invalid Member ID or password.');
+  }
+  if (user.locked_until && new Date(user.locked_until) > new Date()) {
+    const minsLeft = Math.ceil((new Date(user.locked_until) - new Date()) / 60000);
+    throw ApiError.forbidden(`Account locked due to repeated failed logins. Try again in ${minsLeft} minute(s).`);
+  }
+  if (!user.is_active) throw ApiError.forbidden('This account has been deactivated');
+
+  const isMatch = await bcrypt.compare(password, user.password_hash);
+  if (!isMatch) {
+    const failedCount = user.failed_login_count + 1;
+    const shouldLock = failedCount >= MAX_FAILED_ATTEMPTS;
+    await query(`UPDATE users SET failed_login_count = $1, locked_until = $2 WHERE id = $3`, [
+      shouldLock ? 0 : failedCount,
+      shouldLock ? new Date(Date.now() + LOCKOUT_MINUTES * 60000) : null,
+      user.id,
+    ]);
+    throw ApiError.unauthorized('Invalid Member ID or password.');
+  }
+
+  return issueSessionForUser(user);
+}
+
 async function login({ phone, password }, ipAddress) {
   const { rows } = await query('SELECT * FROM users WHERE phone = $1', [phone]);
   const user = rows[0];
@@ -47,9 +187,9 @@ async function login({ phone, password }, ipAddress) {
   // Constant-ish response regardless of whether the account exists, to avoid
   // user enumeration - but we still need to compare against *something*.
   const dummyHash = '$2a$12$CwTycUXWue0Thq9StjUM0uJ8ZpGoNMSAwYP8V9C1LpLoRHrpAO2Fu';
-  const isMatch = await bcrypt.compare(password, user ? user.password_hash : dummyHash);
+  const isMatch = await bcrypt.compare(password, user && user.password_hash ? user.password_hash : dummyHash);
 
-  if (!user) throw ApiError.unauthorized('Invalid phone number or password');
+  if (!user || !user.password_hash) throw ApiError.unauthorized('Invalid phone number or password');
 
   if (user.locked_until && new Date(user.locked_until) > new Date()) {
     const minsLeft = Math.ceil((new Date(user.locked_until) - new Date()) / 60000);
@@ -205,6 +345,10 @@ async function resetPassword(rawToken, newPassword) {
 module.exports = {
   register,
   login,
+  loginWithIdentifier,
+  checkAadhaar,
+  setPasswordViaAadhaar,
+  loginViaAadhaar,
   refresh,
   logout,
   changePassword,

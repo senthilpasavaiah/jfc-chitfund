@@ -37,6 +37,36 @@ async function login(req, res) {
   });
 }
 
+/** Admin login: "Admin" (or any reserved username) + password. */
+async function loginUsername(req, res) {
+  const result = await authService.loginWithIdentifier(req.body);
+  res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, REFRESH_COOKIE_OPTS);
+  await recordAudit({ userId: result.user.id, action: 'USER_LOGIN', entityType: 'User', entityId: result.user.id, ipAddress: req.ip });
+  res.json({ success: true, data: { user: result.user, accessToken: result.accessToken } });
+}
+
+/** Step 1 of member login: resolve which member owns these last-4 Aadhaar digits. */
+async function checkAadhaar(req, res) {
+  const result = await authService.checkAadhaar(req.body.aadhaarLast4);
+  res.json({ success: true, data: result });
+}
+
+/** Step 2a: first-time member login sets their password. */
+async function setPasswordAadhaar(req, res) {
+  const result = await authService.setPasswordViaAadhaar(req.body.aadhaarLast4, req.body.password);
+  res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, REFRESH_COOKIE_OPTS);
+  await recordAudit({ userId: result.user.id, action: 'PASSWORD_SET_FIRST_LOGIN', entityType: 'User', entityId: result.user.id, ipAddress: req.ip });
+  res.json({ success: true, data: { user: result.user, accessToken: result.accessToken } });
+}
+
+/** Step 2b: returning member login with their Aadhaar last-4 + password. */
+async function loginAadhaar(req, res) {
+  const result = await authService.loginViaAadhaar(req.body.aadhaarLast4, req.body.password);
+  res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, REFRESH_COOKIE_OPTS);
+  await recordAudit({ userId: result.user.id, action: 'USER_LOGIN', entityType: 'User', entityId: result.user.id, ipAddress: req.ip });
+  res.json({ success: true, data: { user: result.user, accessToken: result.accessToken } });
+}
+
 async function refresh(req, res) {
   const token = req.cookies[REFRESH_COOKIE_NAME] || req.body.refreshToken;
   const result = await authService.refresh(token);
@@ -84,4 +114,17 @@ async function me(req, res) {
   res.json({ success: true, data: req.user });
 }
 
-module.exports = { register, login, refresh, logout, changePassword, forgotPassword, resetPassword, me };
+module.exports = {
+  register,
+  login,
+  loginUsername,
+  checkAadhaar,
+  setPasswordAadhaar,
+  loginAadhaar,
+  refresh,
+  logout,
+  changePassword,
+  forgotPassword,
+  resetPassword,
+  me,
+};

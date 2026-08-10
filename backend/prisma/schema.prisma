@@ -87,7 +87,8 @@ model User {
   id                String    @id @default(uuid())
   email             String?   @unique
   phone             String    @unique
-  passwordHash      String
+  loginUsername     String?   @unique // reserved text login (e.g. "Admin") - bypasses Aadhaar lookup
+  passwordHash      String?   // null until first-time login (member accounts are created before a password is set)
   role              Role      @default(MEMBER)
   isActive          Boolean   @default(true)
   mustChangePassword Boolean  @default(false)

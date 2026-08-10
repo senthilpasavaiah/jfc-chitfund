@@ -29,17 +29,36 @@ async function create(input) {
   const existing = await query('SELECT id FROM members WHERE mobile_number = $1', [mobileNumber]);
   if (existing.rows.length) throw ApiError.conflict('A member with this mobile number already exists');
 
+  if (aadhaarNumber) {
+    const dupCheck = await query('SELECT id FROM members WHERE aadhaar_last4 = $1 AND status = \'ACTIVE\'', [aadhaarNumber.slice(-4)]);
+    if (dupCheck.rows.length) {
+      throw ApiError.conflict(
+        'Another active member already shares these last-4 Aadhaar digits. Aadhaar-based login requires the last 4 digits to be unique among active members.'
+      );
+    }
+  }
+
   const aadhaarEncrypted = aadhaarNumber ? encryptField(aadhaarNumber) : null;
   const aadhaarLast4 = aadhaarNumber ? aadhaarNumber.slice(-4) : null;
 
-  const { rows } = await query(
-    `INSERT INTO members
-      (name, mobile_number, whatsapp_number, email, aadhaar_encrypted, aadhaar_last4, permanent_address, current_address, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-     RETURNING *`,
-    [name, mobileNumber, whatsappNumber || mobileNumber, email || null, aadhaarEncrypted, aadhaarLast4, permanentAddress || null, currentAddress || null, notes || null]
-  );
-  return serialize(rows[0]);
+  return withTransaction(async (client) => {
+    // Every member gets a linked login account up front (no password yet -
+    // they set one themselves on first login via their Aadhaar last-4).
+    const userResult = await client.query(
+      `INSERT INTO users (phone, email, role) VALUES ($1, $2, 'MEMBER') RETURNING id`,
+      [mobileNumber, email || null]
+    );
+    const userId = userResult.rows[0].id;
+
+    const { rows } = await client.query(
+      `INSERT INTO members
+        (user_id, name, mobile_number, whatsapp_number, email, aadhaar_encrypted, aadhaar_last4, permanent_address, current_address, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       RETURNING *`,
+      [userId, name, mobileNumber, whatsappNumber || mobileNumber, email || null, aadhaarEncrypted, aadhaarLast4, permanentAddress || null, currentAddress || null, notes || null]
+    );
+    return serialize(rows[0]);
+  });
 }
 
 async function list({ status, search, page = 1, pageSize = 20 } = {}) {
