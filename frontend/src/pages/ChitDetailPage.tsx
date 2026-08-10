@@ -91,7 +91,7 @@ export default function ChitDetailPage() {
     <div className="space-y-8">
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="font-display text-2xl">{chit.name}</h2>
+          <h2 className="text-2xl font-bold">{chit.name}</h2>
           <p className="text-ink-muted text-sm font-tabular mt-1">{chit.refNumber}</p>
         </div>
         <div className="text-right">
@@ -109,7 +109,7 @@ export default function ChitDetailPage() {
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-medium">Members ({chit.members.length}/{chit.totalMonths})</h3>
             {chit.status === 'DRAFT' && canManage && chit.members.length === chit.totalMonths && (
-              <button onClick={handleStart} className="rounded-lg bg-gold text-ledger px-3 py-1.5 text-xs font-medium">
+              <button onClick={handleStart} className="rounded-lg bg-gold text-navy px-3 py-1.5 text-xs font-medium">
                 Start chit
               </button>
             )}
@@ -137,7 +137,7 @@ export default function ChitDetailPage() {
                   </option>
                 ))}
               </select>
-              <button type="submit" className="rounded-lg bg-ledger text-white px-3 py-1.5 text-sm">
+              <button type="submit" className="rounded-lg bg-navy text-white px-3 py-1.5 text-sm">
                 Add
               </button>
             </form>
@@ -224,7 +224,7 @@ export default function ChitDetailPage() {
                             />
                             <button
                               onClick={() => handleCompleteAuction(a.id)}
-                              className="rounded bg-gold text-ledger px-2 py-1 text-xs font-medium"
+                              className="rounded bg-gold text-navy px-2 py-1 text-xs font-medium"
                             >
                               Complete
                             </button>

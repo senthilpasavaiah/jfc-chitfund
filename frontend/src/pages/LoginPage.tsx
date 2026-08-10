@@ -112,11 +112,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-ledger px-4">
+    <div className="min-h-screen flex items-center justify-center bg-navy px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="text-xs uppercase tracking-[0.25em] text-gold-light">Jolly Friends Club</div>
-          <h1 className="font-display text-3xl text-white mt-2">Chit Fund Ledger</h1>
+          <img src="/jfc-logo.png" alt="Jolly Friends Club logo" className="w-16 h-16 object-contain mx-auto mb-3" />
+          <div className="text-xs uppercase tracking-[0.25em] text-gold-dim">Jolly Friends Club</div>
+          <h1 className="text-3xl text-white mt-2 font-bold">Chit Fund Ledger</h1>
           <p className="text-white/50 text-sm mt-1">Secure Access Portal</p>
         </div>
 
@@ -126,14 +127,14 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => switchMode('member')}
-              className={`flex-1 py-2 transition-colors ${mode === 'member' ? 'bg-ledger text-white' : 'bg-paper text-ink-muted'}`}
+              className={`flex-1 py-2 transition-colors ${mode === 'member' ? 'bg-navy text-white' : 'bg-paper text-ink-muted'}`}
             >
               Member
             </button>
             <button
               type="button"
               onClick={() => switchMode('admin')}
-              className={`flex-1 py-2 transition-colors ${mode === 'admin' ? 'bg-ledger text-white' : 'bg-paper text-ink-muted'}`}
+              className={`flex-1 py-2 transition-colors ${mode === 'admin' ? 'bg-navy text-white' : 'bg-paper text-ink-muted'}`}
             >
               Admin
             </button>
@@ -159,7 +160,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full rounded-lg bg-ledger text-white py-2.5 text-sm font-medium hover:bg-ledger-light transition-colors disabled:opacity-60"
+                className="w-full rounded-lg bg-navy text-white py-2.5 text-sm font-medium hover:bg-navy-light transition-colors disabled:opacity-60"
               >
                 {submitting ? 'Checking…' : 'Continue'}
               </button>
@@ -195,7 +196,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full rounded-lg bg-gold text-ledger py-2.5 text-sm font-medium disabled:opacity-60"
+                className="w-full rounded-lg bg-gold text-navy py-2.5 text-sm font-medium disabled:opacity-60"
               >
                 {submitting ? 'Saving…' : 'Set Password & Login'}
               </button>
@@ -224,7 +225,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full rounded-lg bg-ledger text-white py-2.5 text-sm font-medium hover:bg-ledger-light transition-colors disabled:opacity-60"
+                className="w-full rounded-lg bg-navy text-white py-2.5 text-sm font-medium hover:bg-navy-light transition-colors disabled:opacity-60"
               >
                 {submitting ? 'Signing in…' : 'Login'}
               </button>
@@ -263,7 +264,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full rounded-lg bg-ledger text-white py-2.5 text-sm font-medium hover:bg-ledger-light transition-colors disabled:opacity-60"
+                className="w-full rounded-lg bg-navy text-white py-2.5 text-sm font-medium hover:bg-navy-light transition-colors disabled:opacity-60"
               >
                 {submitting ? 'Signing in…' : 'Sign in'}
               </button>

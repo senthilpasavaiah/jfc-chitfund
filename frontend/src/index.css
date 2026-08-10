@@ -1,23 +1,21 @@
 @import "tailwindcss";
 
 @theme {
-  /* Palette: a ledger-book identity - deep teal cover, warm gold (chit/gold
-     savings tradition), cool paper background. Deliberately not the
-     cream+terracotta or near-black+neon defaults. */
-  --color-paper: #F4F5F1;
-  --color-paper-raised: #FFFFFF;
-  --color-ink: #1C2426;
-  --color-ink-muted: #5B6A6E;
-  --color-ledger: #123A47;      /* deep teal-navy: sidebar, headers */
-  --color-ledger-light: #1E5266;
-  --color-gold: #C08A2E;        /* accent: gold-chit tradition */
-  --color-gold-light: #E4B563;
-  --color-success: #2E7D4F;
-  --color-danger: #B34435;
-  --color-line: #DDE1DA;
+  /* Matched exactly to the JFC prototype's :root variables */
+  --color-navy: #003366;
+  --color-navy-dark: #00203f;
+  --color-navy-light: #0a4a8a;
+  --color-gold: #FFD700;
+  --color-gold-dim: #e6c200;
+  --color-paper: #f5f7fa;
+  --color-paper-raised: #ffffff;
+  --color-ink: #1a2332;
+  --color-ink-muted: #6b7789;
+  --color-line: #e3e8ef;
+  --color-success: #1e8a4c;
+  --color-danger: #c0392b;
 
-  --font-display: "Fraunces", "Georgia", serif;
-  --font-body: "Inter", system-ui, sans-serif;
+  --font-body: "Inter", "Roboto", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
@@ -31,8 +29,8 @@
     font-family: var(--font-body);
   }
   h1, h2, h3, h4 {
-    font-family: var(--font-display);
-    letter-spacing: -0.01em;
+    font-family: var(--font-body);
+    font-weight: 700;
   }
   .font-tabular {
     font-family: var(--font-mono);

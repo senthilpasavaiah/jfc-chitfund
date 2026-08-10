@@ -33,7 +33,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="font-display text-2xl">Dashboard</h2>
+        <h2 className="text-2xl font-bold">Dashboard</h2>
         <p className="text-ink-muted text-sm mt-1">An overview of every chit, collection, and pending payment.</p>
       </div>
 

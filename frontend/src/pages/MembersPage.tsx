@@ -43,13 +43,13 @@ export default function MembersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="font-display text-2xl">Members</h2>
+          <h2 className="text-2xl font-bold">Members</h2>
           <p className="text-ink-muted text-sm mt-1">Every JFC member, their contact details, and status.</p>
         </div>
         {canManage && (
           <button
             onClick={() => setShowForm((s) => !s)}
-            className="rounded-lg bg-ledger text-white px-4 py-2 text-sm font-medium hover:bg-ledger-light transition-colors"
+            className="rounded-lg bg-navy text-white px-4 py-2 text-sm font-medium hover:bg-navy-light transition-colors"
           >
             {showForm ? 'Cancel' : '+ Add member'}
           </button>
@@ -85,7 +85,7 @@ export default function MembersPage() {
             className="rounded-lg border border-line px-3 py-2 text-sm"
           />
           {error && <p className="col-span-2 text-sm text-danger">{error}</p>}
-          <button type="submit" className="col-span-2 rounded-lg bg-gold text-ledger py-2 text-sm font-medium">
+          <button type="submit" className="col-span-2 rounded-lg bg-gold text-navy py-2 text-sm font-medium">
             Save member
           </button>
         </form>
