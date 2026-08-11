@@ -8,6 +8,12 @@ describe('Aadhaar & Admin-username login', () => {
   const testMobile = '9199999911';
 
   beforeAll(async () => {
+    // Clean up any leftover data from a previous run of this test against a
+    // persistent dev database (this suite is not idempotent by nature since
+    // it exercises real inserts, not a transactional rollback).
+    await pool.query('DELETE FROM members WHERE mobile_number = $1', [testMobile]);
+    await pool.query('DELETE FROM users WHERE phone = $1', [testMobile]);
+
     const res = await request(app).post('/api/auth/login-username').send({ identifier: 'Admin', password: 'Admin@123' });
     adminToken = res.body.data.accessToken;
   });

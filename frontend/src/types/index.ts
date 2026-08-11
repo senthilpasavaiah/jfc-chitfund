@@ -74,4 +74,11 @@ export interface DashboardSummary {
   totalCollection: number;
   totalExpenses: number;
   profit: number;
+  incomeViaChit: number;
+  incomeViaDonation: number;
+  incomeViaSantha: number;
+  totalIncome: number;
+  currentlyInHand: number;
+  accruedProfit: number;
+  finalSettlementValue: number;
 }

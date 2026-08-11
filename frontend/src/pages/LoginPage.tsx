@@ -117,7 +117,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <img src="/jfc-logo.png" alt="Jolly Friends Club logo" className="w-16 h-16 object-contain mx-auto mb-3" />
           <div className="text-xs uppercase tracking-[0.25em] text-gold-dim">Jolly Friends Club</div>
-          <h1 className="text-3xl text-white mt-2 font-bold">Chit Fund Ledger</h1>
+          <h1 className="text-3xl text-white mt-2 font-bold">Chit Management System</h1>
           <p className="text-white/50 text-sm mt-1">Secure Access Portal</p>
         </div>
 

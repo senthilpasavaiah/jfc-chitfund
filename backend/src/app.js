@@ -18,6 +18,8 @@ const chitRoutes = require('./routes/chit.routes');
 const paymentRoutes = require('./routes/payment.routes');
 const expenseRoutes = require('./routes/expense.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
+const reportRoutes = require('./routes/report.routes');
+const fundRoutes = require('./routes/fund.routes');
 
 const app = express();
 
@@ -77,6 +79,8 @@ app.use('/api/chits', chitRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/funds', fundRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

@@ -11,6 +11,7 @@ import PaymentsPage from './pages/PaymentsPage';
 import FundsPage from './pages/FundsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import DocumentsPage from './pages/DocumentsPage';
+import ReportsPage from './pages/ReportsPage';
 import CalculatorPage from './pages/CalculatorPage';
 import ProfilePage from './pages/ProfilePage';
 
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="funds" element={<FundsPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
             <Route path="documents" element={<DocumentsPage />} />
+            <Route path="reports" element={<ReportsPage />} />
             <Route path="calculator" element={<CalculatorPage />} />
             <Route path="profile" element={<ProfilePage />} />
           </Route>

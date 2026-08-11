@@ -1,6 +1,7 @@
 const express = require('express');
 const { query } = require('../config/db');
 const { authenticate } = require('../middleware/auth');
+const fundService = require('../services/fund.service');
 
 const router = express.Router();
 router.use(authenticate);
@@ -31,6 +32,8 @@ router.get('/summary', async (req, res) => {
   const totalExpenseResult = await query(`SELECT COALESCE(SUM(amount), 0)::float AS total FROM expenses`);
   const totalExpense = totalExpenseResult.rows[0].total;
 
+  const fundsSummary = await fundService.summary();
+
   res.json({
     success: true,
     data: {
@@ -44,6 +47,16 @@ router.get('/summary', async (req, res) => {
       totalCollection,
       totalExpenses: totalExpense,
       profit: totalCollection - totalExpense,
+      // Funds figures - imported from JFC_Santha_Settlement_2026.xlsx, plus
+      // whatever is recorded going forward. See fund.service.js for the
+      // exact aggregation - nothing here is hardcoded.
+      incomeViaChit: fundsSummary.incomeViaChit,
+      incomeViaDonation: fundsSummary.incomeViaDonation,
+      incomeViaSantha: fundsSummary.incomeViaSantha,
+      totalIncome: fundsSummary.totalIncome,
+      currentlyInHand: fundsSummary.currentlyInHand,
+      accruedProfit: fundsSummary.accruedProfit,
+      finalSettlementValue: fundsSummary.finalSettlementValue,
     },
   });
 });
