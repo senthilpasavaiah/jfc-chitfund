@@ -100,7 +100,7 @@ export default function MembersPage() {
 
       <div className="ledger-card overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-paper text-ink-muted text-xs uppercase tracking-wide">
+          <thead className="bg-navy-light text-white text-xs uppercase tracking-wide">
             <tr>
               <th className="text-left px-4 py-3">Name</th>
               <th className="text-left px-4 py-3">Mobile</th>
@@ -123,8 +123,8 @@ export default function MembersPage() {
                 </td>
               </tr>
             ) : (
-              members.map((m) => (
-                <tr key={m.id} className="border-t border-line">
+              members.map((m, idx) => (
+                <tr key={m.id} className={`cursor-pointer transition-colors hover:bg-[#dbe6f5] ${idx % 2 === 0 ? 'bg-[#eef2f9]' : 'bg-[#f8fafc]'}`}>
                   <td className="px-4 py-3 font-medium">{m.name}</td>
                   <td className="px-4 py-3 font-tabular">{m.mobileNumber}</td>
                   <td className="px-4 py-3 font-tabular text-ink-muted">{m.aadhaarMasked}</td>

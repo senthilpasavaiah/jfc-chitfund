@@ -102,15 +102,18 @@ export default function AppShell() {
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
           ${collapsed ? 'md:w-20' : 'md:w-64'} w-64`}
       >
-        <div className={`px-4 py-5 border-b border-white/10 flex items-center gap-3 ${collapsed ? 'md:justify-center' : ''}`}>
+        <div className={`px-4 py-5 border-b border-white/10 flex items-center gap-3 overflow-hidden`}>
           <img src="/jfc-logo.png" alt="Jolly Friends Club logo" className="w-9 h-9 object-contain shrink-0" />
-          <div className={collapsed ? 'md:hidden' : ''}>
+          <div
+            className="transition-all duration-200 overflow-hidden whitespace-nowrap"
+            style={collapsed ? { opacity: 0, maxWidth: 0 } : { opacity: 1, maxWidth: 200 }}
+          >
             <h1 className="font-bold text-sm leading-tight">JOLLY FRIENDS CLUB</h1>
             <div className="text-[11px] text-white/70">Chit management system</div>
           </div>
         </div>
 
-        <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto overflow-x-hidden">
           {NAV_ITEMS.map((item) => (
             <NavLink
               key={item.to}
@@ -118,14 +121,19 @@ export default function AppShell() {
               end={item.end}
               onClick={() => setMobileOpen(false)}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
+                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors cursor-pointer overflow-hidden ${
                   isActive ? 'bg-gold text-navy' : 'text-white/80 hover:bg-white/10 hover:text-white'
-                } ${collapsed ? 'md:justify-center' : ''}`
+                }`
               }
               title={item.label}
             >
               <span className="w-5 h-5 shrink-0">{ICONS[item.key]}</span>
-              <span className={collapsed ? 'md:hidden' : ''}>{item.label}</span>
+              <span
+                className="transition-all duration-200 overflow-hidden whitespace-nowrap"
+                style={collapsed ? { opacity: 0, maxWidth: 0 } : { opacity: 1, maxWidth: 200 }}
+              >
+                {item.label}
+              </span>
             </NavLink>
           ))}
         </nav>
@@ -133,12 +141,17 @@ export default function AppShell() {
         <div className="px-3 py-4 border-t border-white/10 text-sm">
           <button
             onClick={handleLogout}
-            className={`w-full flex items-center gap-2 rounded-md border border-white/20 px-3 py-2 text-xs hover:bg-white/10 transition-colors cursor-pointer ${collapsed ? 'md:justify-center' : ''}`}
+            className="w-full flex items-center gap-2 rounded-md border border-white/20 px-3 py-2 text-xs hover:bg-white/10 transition-colors cursor-pointer overflow-hidden"
           >
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" />
             </svg>
-            <span className={collapsed ? 'md:hidden' : ''}>Logout</span>
+            <span
+              className="transition-all duration-200 overflow-hidden whitespace-nowrap"
+              style={collapsed ? { opacity: 0, maxWidth: 0 } : { opacity: 1, maxWidth: 100 }}
+            >
+              Logout
+            </span>
           </button>
         </div>
 

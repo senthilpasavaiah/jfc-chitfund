@@ -19,8 +19,8 @@ function StatCard({
   accentBorder: string;
 }) {
   return (
-    <div className="ledger-card p-5" style={{ borderLeft: `4px solid ${accentBorder}` }}>
-      <div className="text-xs uppercase tracking-wide text-ink-muted">{label}</div>
+    <div className="ledger-card p-5 flex flex-col" style={{ borderLeft: `4px solid ${accentBorder}` }}>
+      <div className="text-xs uppercase tracking-wide text-ink-muted leading-snug min-h-[2rem]">{label}</div>
       <div className="font-tabular text-2xl mt-1.5 text-navy font-bold">{value}</div>
       {sub && <div className="text-xs text-success mt-1">{sub}</div>}
     </div>
@@ -49,7 +49,7 @@ export default function DashboardPage() {
         <p className="text-ink-muted text-sm mt-1">Welcome, {user?.role === 'ADMIN' ? 'Admin' : user?.phone}</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 items-stretch">
         <StatCard label="Total members" value={String(summary.totalMembers)} sub="Registered in JFC" accentBorder="#FFD700" />
         <StatCard label="Income via Chit" value={formatINR(summary.incomeViaChit)} sub="Recorded profit, all years" accentBorder="#2563eb" />
         <StatCard label="Income via Donation" value={formatINR(summary.incomeViaDonation)} sub="From Funds page" accentBorder="#16a34a" />
@@ -57,7 +57,7 @@ export default function DashboardPage() {
         <StatCard label="Expenses" value={formatINR(summary.totalExpenses)} sub="From Funds page" accentBorder="#c0392b" />
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-stretch">
         <StatCard label="Total income" value={formatINR(summary.totalIncome)} sub="Chit + Donation + Santha" accentBorder="#0d9488" />
         <StatCard label="Currently in hand (principal)" value={formatINR(summary.currentlyInHand)} sub="Income − Expenses" accentBorder="#003366" />
         <StatCard label="Accrued profit (6% PA)" value={formatINR(summary.accruedProfit)} sub="From settlement, all years" accentBorder="#e6c200" />
