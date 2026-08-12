@@ -61,10 +61,7 @@ export default function PaymentsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Payments</h2>
-        <p className="text-ink-muted text-sm mt-1">Every pending or overdue installment across all chits.</p>
-      </div>
+      <p className="text-ink-muted text-sm">Every pending or overdue installment across all chits.</p>
 
       {error && <p className="text-sm text-danger">{error}</p>}
 

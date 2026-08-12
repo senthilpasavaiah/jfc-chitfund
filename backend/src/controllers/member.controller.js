@@ -8,12 +8,12 @@ async function create(req, res) {
 }
 
 async function list(req, res) {
-  const result = await memberService.list(req.query);
+  const result = await memberService.list(req.query, req.user);
   res.json({ success: true, ...result });
 }
 
 async function getById(req, res) {
-  const member = await memberService.getById(req.params.id);
+  const member = await memberService.getById(req.params.id, req.user);
   res.json({ success: true, data: member });
 }
 

@@ -42,14 +42,11 @@ export default function MembersPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Members</h2>
-          <p className="text-ink-muted text-sm mt-1">Every JFC member, their contact details, and status.</p>
-        </div>
+        <p className="text-ink-muted text-sm">Every JFC member, their contact details, and status.</p>
         {canManage && (
           <button
             onClick={() => setShowForm((s) => !s)}
-            className="rounded-lg bg-navy text-white px-4 py-2 text-sm font-medium hover:bg-navy-light transition-colors"
+            className="rounded-lg bg-navy text-white px-4 py-2 text-sm font-medium hover:bg-navy-light transition-colors cursor-pointer"
           >
             {showForm ? 'Cancel' : '+ Add member'}
           </button>
@@ -91,6 +88,12 @@ export default function MembersPage() {
         </form>
       )}
 
+      <p className="text-xs text-ink-muted -mt-2">
+        {canManage
+          ? "Click anywhere on a row to open that member's profile."
+          : 'You can view the member list, but only an admin can see full contact details.'}
+      </p>
+
       <input
         placeholder="Search by name or mobile number…"
         value={search}
@@ -103,7 +106,7 @@ export default function MembersPage() {
           <thead className="bg-navy-light text-white text-xs uppercase tracking-wide">
             <tr>
               <th className="text-left px-4 py-3">Name</th>
-              <th className="text-left px-4 py-3">Mobile</th>
+              {canManage && <th className="text-left px-4 py-3">Mobile</th>}
               <th className="text-left px-4 py-3">Aadhaar</th>
               <th className="text-left px-4 py-3">Status</th>
               <th className="text-left px-4 py-3">Joined</th>
@@ -112,21 +115,21 @@ export default function MembersPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-ink-muted">
+                <td colSpan={canManage ? 5 : 4} className="px-4 py-6 text-center text-ink-muted">
                   Loading…
                 </td>
               </tr>
             ) : members.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-ink-muted">
+                <td colSpan={canManage ? 5 : 4} className="px-4 py-6 text-center text-ink-muted">
                   No members found.
                 </td>
               </tr>
             ) : (
               members.map((m, idx) => (
-                <tr key={m.id} className={`cursor-pointer transition-colors hover:bg-[#dbe6f5] ${idx % 2 === 0 ? 'bg-[#eef2f9]' : 'bg-[#f8fafc]'}`}>
+                <tr key={m.id} className={`transition-colors hover:bg-[#dbe6f5] ${idx % 2 === 0 ? 'bg-[#eef2f9]' : 'bg-[#f8fafc]'}`}>
                   <td className="px-4 py-3 font-medium">{m.name}</td>
-                  <td className="px-4 py-3 font-tabular">{m.mobileNumber}</td>
+                  {canManage && <td className="px-4 py-3 font-tabular">{m.mobileNumber || '—'}</td>}
                   <td className="px-4 py-3 font-tabular text-ink-muted">{m.aadhaarMasked}</td>
                   <td className="px-4 py-3">
                     <span

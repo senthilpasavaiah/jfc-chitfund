@@ -1,5 +1,5 @@
 import { useState, type ReactElement } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const ICONS: Record<string, ReactElement> = {
@@ -65,6 +65,7 @@ const ICONS: Record<string, ReactElement> = {
 export default function AppShell() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const isAdmin = user?.role === 'ADMIN';
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -82,12 +83,36 @@ export default function AppShell() {
     { to: '/profile', key: 'profile', label: isAdmin ? 'Admin Profile' : 'My Profile' },
   ];
 
+  // Matches the prototype's own `titles` map exactly - the topbar heading is
+  // a longer descriptive title, distinct from the shorter sidebar label.
+  const PAGE_TITLES: Record<string, string> = {
+    '/': 'Overview',
+    '/members': 'Members',
+    '/chits': isAdmin ? 'Chit Management' : 'Chit',
+    '/payments': 'Payment Management',
+    '/funds': 'Fund & Expense Tracking',
+    '/notifications': 'Notifications & Communication',
+    '/documents': 'Association Documents',
+    '/reports': 'Reports',
+    '/calculator': 'Chit Calculator',
+    '/profile': isAdmin ? 'Admin Profile' : 'My Profile',
+  };
+  const currentPath = location.pathname.startsWith('/chits/') ? '/chits' : location.pathname;
+  const pageTitle = PAGE_TITLES[currentPath] || 'Overview';
+
   async function handleLogout() {
     await logout();
     navigate('/login');
   }
 
-  const initial = (user?.phone || 'U').slice(-1).toUpperCase();
+  const displayName = user?.name || user?.phone || 'User';
+  const initials = displayName
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase();
 
   return (
     <div className="flex h-full min-h-screen relative">
@@ -101,6 +126,7 @@ export default function AppShell() {
           fixed md:static inset-y-0 left-0
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
           ${collapsed ? 'md:w-20' : 'md:w-64'} w-64`}
+        style={{ background: 'linear-gradient(180deg, #00203f 0%, #001529 100%)' }}
       >
         <div className={`px-4 py-5 border-b border-white/10 flex items-center gap-3 overflow-hidden`}>
           <img src="/jfc-logo.png" alt="Jolly Friends Club logo" className="w-9 h-9 object-contain shrink-0" />
@@ -166,32 +192,37 @@ export default function AppShell() {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
-        <header className="bg-white border-b border-line px-4 md:px-8 py-3 flex items-center justify-between">
-          <button className="md:hidden cursor-pointer text-ink" onClick={() => setMobileOpen(true)} aria-label="Open menu">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M3 6h18M3 12h18M3 18h18" />
-            </svg>
-          </button>
-          <div className="hidden md:block" />
-          <div className="flex items-center gap-4">
-            <button className="cursor-pointer text-ink-muted hover:text-navy transition-colors" title="Notifications" onClick={() => navigate('/notifications')}>
+        {/* Top bar - title + welcome live here, matching the prototype exactly */}
+        <header className="bg-white border-b border-line px-4 md:px-7 py-3.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button className="md:hidden cursor-pointer text-ink shrink-0" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+              <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <path d="M3 6h18M3 12h18M3 18h18" />
+              </svg>
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-[17px] font-bold text-ink leading-tight truncate">{pageTitle}</h1>
+              <div className="text-xs text-ink-muted mt-0.5">Welcome, {displayName}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <button className="cursor-pointer text-ink-muted hover:text-navy transition-colors relative p-1.5" title="Notifications" onClick={() => navigate('/notifications')}>
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M6 9a6 6 0 1 1 12 0c0 5 2 6.5 2 6.5H4S6 14 6 9Z" /><path d="M10 19a2 2 0 0 0 4 0" />
               </svg>
             </button>
             <button
               onClick={() => navigate('/profile')}
-              className="w-8 h-8 rounded-full bg-gold text-navy font-bold text-sm flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity"
-              title={user?.phone}
+              className="w-9 h-9 rounded-full bg-gold text-navy font-bold text-[13px] flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity"
+              title={displayName}
             >
-              {isAdmin ? 'A' : initial}
+              {initials || 'U'}
             </button>
           </div>
         </header>
 
         <main className="flex-1 bg-paper overflow-y-auto">
-          <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-8">
+          <div className="max-w-6xl mx-auto px-4 md:px-8 py-6">
             <Outlet />
           </div>
         </main>

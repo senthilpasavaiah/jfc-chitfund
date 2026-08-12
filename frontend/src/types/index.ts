@@ -5,6 +5,8 @@ export interface User {
   email: string | null;
   phone: string;
   role: Role;
+  name?: string | null;
+  memberId?: string | null;
 }
 
 export interface Member {

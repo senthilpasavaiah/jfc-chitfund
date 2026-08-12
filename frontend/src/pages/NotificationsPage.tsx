@@ -1,7 +1,7 @@
 export default function NotificationsPage() {
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold">Notifications</h2>
+      
       <div className="ledger-card p-8 text-center">
         <p className="text-ink-muted">
           The backend already logs every reminder/OTP "intent" (e.g. password resets) to a database table —

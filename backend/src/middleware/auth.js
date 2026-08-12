@@ -18,7 +18,10 @@ async function authenticate(req, res, next) {
   }
 
   const { rows } = await query(
-    'SELECT id, email, phone, role, is_active FROM users WHERE id = $1',
+    `SELECT u.id, u.email, u.phone, u.role, u.is_active, m.id AS member_id, m.name AS member_name
+     FROM users u
+     LEFT JOIN members m ON m.user_id = u.id
+     WHERE u.id = $1`,
     [payload.sub]
   );
   const user = rows[0];
@@ -26,7 +29,18 @@ async function authenticate(req, res, next) {
     throw ApiError.unauthorized('User account is inactive or no longer exists');
   }
 
-  req.user = { id: user.id, email: user.email, phone: user.phone, role: user.role };
+  // Display name: "Admin" for admins (matches the prototype's fixed admin
+  // label), otherwise the linked member's real name.
+  const displayName = user.role === 'ADMIN' ? 'Admin' : user.member_name || user.phone;
+
+  req.user = {
+    id: user.id,
+    email: user.email,
+    phone: user.phone,
+    role: user.role,
+    memberId: user.member_id,
+    name: displayName,
+  };
   next();
 }
 

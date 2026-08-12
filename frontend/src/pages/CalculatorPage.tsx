@@ -126,10 +126,7 @@ export default function CalculatorPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-bold">Chit Calculator</h2>
-        <p className="text-ink-muted text-sm mt-1">The same commission model JFC actually uses — choose a chit value and duration.</p>
-      </div>
+      <p className="text-ink-muted text-sm">The same commission model JFC actually uses — choose a chit value and duration.</p>
 
       <div className="bg-white border border-line rounded-xl p-5 shadow-sm">
         <div className="text-[11px] font-extrabold uppercase tracking-wide text-[#0f8b8d] mb-2.5 flex items-center gap-2">

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import client from '../api/client';
-import { useAuth } from '../context/AuthContext';
 import type { DashboardSummary } from '../types';
 
 function formatINR(amount: number) {
@@ -28,7 +27,6 @@ function StatCard({
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -44,11 +42,6 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="text-2xl font-bold">Overview</h2>
-        <p className="text-ink-muted text-sm mt-1">Welcome, {user?.role === 'ADMIN' ? 'Admin' : user?.phone}</p>
-      </div>
-
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 items-stretch">
         <StatCard label="Total members" value={String(summary.totalMembers)} sub="Registered in JFC" accentBorder="#FFD700" />
         <StatCard label="Income via Chit" value={formatINR(summary.incomeViaChit)} sub="Recorded profit, all years" accentBorder="#2563eb" />

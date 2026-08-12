@@ -26,6 +26,8 @@ export default function FundsPage() {
   const [loading, setLoading] = useState(true);
 
   const [expForm, setExpForm] = useState({ category: 'OFFICE', description: '', amount: '' });
+  const [santhaForm, setSanthaForm] = useState({ date: '', name: '', ravi: '', vv: '' });
+  const [donationForm, setDonationForm] = useState({ date: '', name: '', amount: '' });
   const [error, setError] = useState<string | null>(null);
 
   async function loadAll() {
@@ -61,6 +63,63 @@ export default function FundsPage() {
     }
   }
 
+  async function handleAddSantha(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!santhaForm.name.trim()) {
+      setError('Enter a member name.');
+      return;
+    }
+    const raviAmt = Number(santhaForm.ravi) || 0;
+    const vvAmt = Number(santhaForm.vv) || 0;
+    if (raviAmt <= 0 && vvAmt <= 0) {
+      setError('Enter at least one amount (Santha to Ravi or Santha to VV).');
+      return;
+    }
+    try {
+      if (raviAmt > 0) {
+        await client.post('/funds/santha', {
+          memberName: santhaForm.name,
+          roundLabel: 'Santha to Ravi',
+          amount: raviAmt,
+          notes: santhaForm.date || undefined,
+        });
+      }
+      if (vvAmt > 0) {
+        await client.post('/funds/santha', {
+          memberName: santhaForm.name,
+          roundLabel: 'Santha to VV',
+          amount: vvAmt,
+          notes: santhaForm.date || undefined,
+        });
+      }
+      setSanthaForm({ date: '', name: '', ravi: '', vv: '' });
+      loadAll();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Could not add Santha entry.');
+    }
+  }
+
+  async function handleAddDonation(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!donationForm.name.trim() || !donationForm.amount) {
+      setError('Enter a member name and amount.');
+      return;
+    }
+    try {
+      await client.post('/funds/donations', {
+        memberName: donationForm.name,
+        amount: Number(donationForm.amount),
+        donatedAt: donationForm.date || undefined,
+      });
+      setDonationForm({ date: '', name: '', amount: '' });
+      loadAll();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Could not add donation.');
+    }
+  }
+
   const TABS: { key: typeof tab; label: string }[] = [
     { key: 'settlement', label: 'Settlement' },
     { key: 'donation', label: 'Donation' },
@@ -71,10 +130,7 @@ export default function FundsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Funds</h2>
-        <p className="text-ink-muted text-sm mt-1">Donation, Santha, Expenses, historical Chit profit, and the Final Settlement ledger.</p>
-      </div>
+      <p className="text-ink-muted text-sm">Donation, Santha, Expenses, historical Chit profit, and the Final Settlement ledger.</p>
 
       <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium w-fit flex-wrap">
         {TABS.map((t) => (
@@ -139,40 +195,90 @@ export default function FundsPage() {
           )}
 
           {tab === 'donation' && (
-            <div className="ledger-card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-paper text-ink-muted text-xs uppercase tracking-wide">
-                  <tr><th className="text-left px-4 py-2">Member</th><th className="text-right px-4 py-2">Amount</th><th className="text-left px-4 py-2">Notes</th></tr>
-                </thead>
-                <tbody>
-                  {donations.map((d) => (
-                    <tr key={d.id} className="border-t border-line">
-                      <td className="px-4 py-2.5">{d.member_name}{!d.member_status && <span className="text-xs text-ink-muted ml-1">(former member)</span>}</td>
-                      <td className="px-4 py-2.5 text-right font-tabular">{formatINR(Number(d.amount))}</td>
-                      <td className="px-4 py-2.5 text-ink-muted text-xs">{d.notes}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-4">
+              {canManage && (
+                <form onSubmit={handleAddDonation} className="ledger-card p-5">
+                  <h3 className="font-bold mb-3">Add Donation Entry</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div>
+                      <label className="block text-xs font-semibold text-ink-muted mb-1">Date</label>
+                      <input type="date" value={donationForm.date} onChange={(e) => setDonationForm({ ...donationForm, date: e.target.value })} className="w-full rounded-lg border border-line px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-ink-muted mb-1">Name</label>
+                      <input placeholder="e.g. Ravi" value={donationForm.name} onChange={(e) => setDonationForm({ ...donationForm, name: e.target.value })} className="w-full rounded-lg border border-line px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-ink-muted mb-1">Donation Amount (₹)</label>
+                      <input type="number" placeholder="0" value={donationForm.amount} onChange={(e) => setDonationForm({ ...donationForm, amount: e.target.value })} className="w-full rounded-lg border border-line px-3 py-2 text-sm" />
+                    </div>
+                    <button type="submit" className="rounded-lg bg-navy text-white px-5 py-2 text-sm font-bold cursor-pointer whitespace-nowrap">+ Add</button>
+                  </div>
+                  {error && <p className="text-sm text-danger mt-2">{error}</p>}
+                </form>
+              )}
+              <div className="ledger-card overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-paper text-ink-muted text-xs uppercase tracking-wide">
+                    <tr><th className="text-left px-4 py-2">Member</th><th className="text-right px-4 py-2">Amount</th><th className="text-left px-4 py-2">Notes</th></tr>
+                  </thead>
+                  <tbody>
+                    {donations.map((d) => (
+                      <tr key={d.id} className="border-t border-line">
+                        <td className="px-4 py-2.5">{d.member_name}{!d.member_status && <span className="text-xs text-ink-muted ml-1">(former member)</span>}</td>
+                        <td className="px-4 py-2.5 text-right font-tabular">{formatINR(Number(d.amount))}</td>
+                        <td className="px-4 py-2.5 text-ink-muted text-xs">{d.notes}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
           {tab === 'santha' && (
-            <div className="ledger-card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-paper text-ink-muted text-xs uppercase tracking-wide">
-                  <tr><th className="text-left px-4 py-2">Member</th><th className="text-left px-4 py-2">Round</th><th className="text-right px-4 py-2">Amount</th></tr>
-                </thead>
-                <tbody>
-                  {santha.map((s) => (
-                    <tr key={s.id} className="border-t border-line">
-                      <td className="px-4 py-2.5">{s.member_name}{!s.member_status && <span className="text-xs text-ink-muted ml-1">(former member)</span>}</td>
-                      <td className="px-4 py-2.5">{s.round_label}</td>
-                      <td className="px-4 py-2.5 text-right font-tabular">{formatINR(Number(s.amount))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-4">
+              {canManage && (
+                <form onSubmit={handleAddSantha} className="ledger-card p-5">
+                  <h3 className="font-bold mb-3">Add Santha Entry</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                    <div>
+                      <label className="block text-xs font-semibold text-ink-muted mb-1">Date</label>
+                      <input type="date" value={santhaForm.date} onChange={(e) => setSanthaForm({ ...santhaForm, date: e.target.value })} className="w-full rounded-lg border border-line px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-ink-muted mb-1">Name</label>
+                      <input placeholder="e.g. Veeraman" value={santhaForm.name} onChange={(e) => setSanthaForm({ ...santhaForm, name: e.target.value })} className="w-full rounded-lg border border-line px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-ink-muted mb-1">Santha to Ravi (₹)</label>
+                      <input type="number" placeholder="0" value={santhaForm.ravi} onChange={(e) => setSanthaForm({ ...santhaForm, ravi: e.target.value })} className="w-full rounded-lg border border-line px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-ink-muted mb-1">Santha to VV (₹)</label>
+                      <input type="number" placeholder="0" value={santhaForm.vv} onChange={(e) => setSanthaForm({ ...santhaForm, vv: e.target.value })} className="w-full rounded-lg border border-line px-3 py-2 text-sm" />
+                    </div>
+                    <button type="submit" className="rounded-lg bg-navy text-white px-5 py-2 text-sm font-bold cursor-pointer whitespace-nowrap">+ Add</button>
+                  </div>
+                  {error && <p className="text-sm text-danger mt-2">{error}</p>}
+                </form>
+              )}
+              <div className="ledger-card overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-paper text-ink-muted text-xs uppercase tracking-wide">
+                    <tr><th className="text-left px-4 py-2">Member</th><th className="text-left px-4 py-2">Round</th><th className="text-right px-4 py-2">Amount</th></tr>
+                  </thead>
+                  <tbody>
+                    {santha.map((s) => (
+                      <tr key={s.id} className="border-t border-line">
+                        <td className="px-4 py-2.5">{s.member_name}{!s.member_status && <span className="text-xs text-ink-muted ml-1">(former member)</span>}</td>
+                        <td className="px-4 py-2.5">{s.round_label}</td>
+                        <td className="px-4 py-2.5 text-right font-tabular">{formatINR(Number(s.amount))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 

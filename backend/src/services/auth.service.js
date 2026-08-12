@@ -44,12 +44,19 @@ async function register({ name, phone, email, password, role, whatsappNumber }) 
  * Issues tokens + updates login bookkeeping for an already-verified user row.
  * Shared by every login path (phone/password, username/password, Aadhaar).
  */
+async function resolveDisplayName(userId, role) {
+  if (role === 'ADMIN') return 'Admin';
+  const { rows } = await query('SELECT name FROM members WHERE user_id = $1', [userId]);
+  return rows[0]?.name || null;
+}
+
 async function issueSessionForUser(user) {
   await query(
     `UPDATE users SET failed_login_count = 0, locked_until = NULL, last_login_at = now() WHERE id = $1`,
     [user.id]
   );
-  const safeUser = { id: user.id, email: user.email, phone: user.phone, role: user.role };
+  const name = await resolveDisplayName(user.id, user.role);
+  const safeUser = { id: user.id, email: user.email, phone: user.phone, role: user.role, name };
   const accessToken = signAccessToken(safeUser);
   const refreshToken = signRefreshToken(safeUser);
   const decoded = verifyRefreshToken(refreshToken);
@@ -217,7 +224,8 @@ async function login({ phone, password }, ipAddress) {
     [user.id]
   );
 
-  const safeUser = { id: user.id, email: user.email, phone: user.phone, role: user.role };
+  const name = await resolveDisplayName(user.id, user.role);
+  const safeUser = { id: user.id, email: user.email, phone: user.phone, role: user.role, name };
   const accessToken = signAccessToken(safeUser);
   const refreshToken = signRefreshToken(safeUser);
 

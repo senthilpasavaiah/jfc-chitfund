@@ -33,10 +33,7 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-6 max-w-lg">
-      <div>
-        <h2 className="text-2xl font-bold">{user?.role === 'ADMIN' ? 'Admin Profile' : 'My Profile'}</h2>
-        <p className="text-ink-muted text-sm mt-1">Your account details and password.</p>
-      </div>
+      <p className="text-ink-muted text-sm">Your account details and password.</p>
 
       <div className="ledger-card p-5 space-y-2">
         <div className="flex justify-between text-sm border-b border-line pb-2">

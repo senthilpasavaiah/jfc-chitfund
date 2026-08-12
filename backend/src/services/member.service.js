@@ -2,22 +2,35 @@ const { query, withTransaction } = require('../config/db');
 const ApiError = require('../utils/ApiError');
 const { encryptField, maskAadhaar } = require('../utils/crypto');
 
-function serialize(row) {
+/**
+ * Serializes a member row for the API response.
+ *
+ * `viewer` restricts what's visible, matching the prototype's own rule:
+ * non-admin/manager viewers only see full details (phone, real Aadhaar
+ * last-4) on their OWN record; every other member's row is fully masked
+ * and has no phone number at all. This is enforced here (not just in the
+ * frontend) since the data itself is sensitive.
+ */
+function serialize(row, viewer) {
   if (!row) return null;
+  const isPrivileged = viewer && (viewer.role === 'ADMIN' || viewer.role === 'MANAGER');
+  const isOwnRecord = viewer && viewer.memberId === row.id;
+  const canSeeFull = !viewer || isPrivileged || isOwnRecord;
+
   return {
     id: row.id,
     userId: row.user_id,
     name: row.name,
     photoUrl: row.photo_url,
-    mobileNumber: row.mobile_number,
-    whatsappNumber: row.whatsapp_number,
-    email: row.email,
-    permanentAddress: row.permanent_address,
-    currentAddress: row.current_address,
-    aadhaarMasked: maskAadhaar(row.aadhaar_last4),
+    mobileNumber: isPrivileged || isOwnRecord ? row.mobile_number : null,
+    whatsappNumber: isPrivileged || isOwnRecord ? row.whatsapp_number : null,
+    email: canSeeFull ? row.email : null,
+    permanentAddress: canSeeFull ? row.permanent_address : null,
+    currentAddress: canSeeFull ? row.current_address : null,
+    aadhaarMasked: canSeeFull ? maskAadhaar(row.aadhaar_last4) : 'XXXX XXXX XXXX',
     status: row.status,
     joinedDate: row.joined_date,
-    notes: row.notes,
+    notes: canSeeFull ? row.notes : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -61,7 +74,7 @@ async function create(input) {
   });
 }
 
-async function list({ status, search, page = 1, pageSize = 20 } = {}) {
+async function list({ status, search, page = 1, pageSize = 20 } = {}, viewer) {
   const conditions = [];
   const params = [];
 
@@ -86,15 +99,15 @@ async function list({ status, search, page = 1, pageSize = 20 } = {}) {
   );
 
   return {
-    data: rows.map(serialize),
+    data: rows.map((r) => serialize(r, viewer)),
     pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
   };
 }
 
-async function getById(id) {
+async function getById(id, viewer) {
   const { rows } = await query('SELECT * FROM members WHERE id = $1', [id]);
   if (!rows[0]) throw ApiError.notFound('Member not found');
-  return serialize(rows[0]);
+  return serialize(rows[0], viewer);
 }
 
 async function update(id, input) {

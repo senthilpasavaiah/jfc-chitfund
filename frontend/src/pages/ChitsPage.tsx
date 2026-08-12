@@ -54,14 +54,11 @@ export default function ChitsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Chits</h2>
-          <p className="text-ink-muted text-sm mt-1">Every chit fund cycle - draft, running, or closed.</p>
-        </div>
+        <p className="text-ink-muted text-sm">Every chit fund cycle - draft, running, or closed.</p>
         {canManage && (
           <button
             onClick={() => setShowForm((s) => !s)}
-            className="rounded-lg bg-navy text-white px-4 py-2 text-sm font-medium hover:bg-navy-light transition-colors"
+            className="rounded-lg bg-navy text-white px-4 py-2 text-sm font-medium hover:bg-navy-light transition-colors cursor-pointer"
           >
             {showForm ? 'Cancel' : '+ New chit'}
           </button>

@@ -60,10 +60,7 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Reports</h2>
-        <p className="text-ink-muted text-sm mt-1">Collections and expenses across any time period, ready to export.</p>
-      </div>
+      <p className="text-ink-muted text-sm">Collections and expenses across any time period, ready to export.</p>
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium">
