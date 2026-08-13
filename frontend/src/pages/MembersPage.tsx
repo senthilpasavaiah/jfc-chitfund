@@ -41,8 +41,7 @@ export default function MembersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-ink-muted text-sm">Every JFC member, their contact details, and status.</p>
+      <div className="flex items-center justify-end">
         {canManage && (
           <button
             onClick={() => setShowForm((s) => !s)}
@@ -87,12 +86,6 @@ export default function MembersPage() {
           </button>
         </form>
       )}
-
-      <p className="text-xs text-ink-muted -mt-2">
-        {canManage
-          ? "Click anywhere on a row to open that member's profile."
-          : 'You can view the member list, but only an admin can see full contact details.'}
-      </p>
 
       <input
         placeholder="Search by name or mobile number…"

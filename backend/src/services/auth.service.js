@@ -350,6 +350,54 @@ async function resetPassword(rawToken, newPassword) {
   });
 }
 
+/**
+ * Admin Access panel data: total admin count, current admins (real member
+ * grants only - the system Admin account is always implicitly counted),
+ * and members eligible to be granted admin (must have an Aadhaar on file
+ * and not already be an admin).
+ */
+async function adminAccessInfo() {
+  const admins = await query(
+    `SELECT m.id AS member_id, m.name FROM members m
+     JOIN users u ON u.id = m.user_id
+     WHERE u.role = 'ADMIN'
+     ORDER BY m.name`
+  );
+  const eligible = await query(
+    `SELECT m.id AS member_id, m.name FROM members m
+     JOIN users u ON u.id = m.user_id
+     WHERE u.role != 'ADMIN' AND m.aadhaar_last4 IS NOT NULL AND m.status = 'ACTIVE'
+     ORDER BY m.name`
+  );
+  return {
+    totalAdmins: admins.rows.length + 1, // +1 for the fixed system Admin account
+    grantedAdmins: admins.rows,
+    eligibleMembers: eligible.rows,
+  };
+}
+
+async function grantAdmin(memberId) {
+  const { rows } = await query(
+    `SELECT m.id, m.user_id, m.aadhaar_last4 FROM members m WHERE m.id = $1`,
+    [memberId]
+  );
+  const member = rows[0];
+  if (!member) throw ApiError.notFound('Member not found');
+  if (!member.user_id) throw ApiError.badRequest('This member has no login account yet');
+  if (!member.aadhaar_last4) throw ApiError.badRequest('Only members with an Aadhaar on file can be made admin');
+  await query(`UPDATE users SET role = 'ADMIN' WHERE id = $1`, [member.user_id]);
+}
+
+async function revokeAdmin(memberId) {
+  const info = await adminAccessInfo();
+  if (info.totalAdmins <= 1) throw ApiError.badRequest('At least one admin must remain');
+
+  const { rows } = await query(`SELECT user_id FROM members WHERE id = $1`, [memberId]);
+  const member = rows[0];
+  if (!member || !member.user_id) throw ApiError.notFound('Member not found');
+  await query(`UPDATE users SET role = 'MEMBER' WHERE id = $1`, [member.user_id]);
+}
+
 module.exports = {
   register,
   login,
@@ -362,4 +410,7 @@ module.exports = {
   changePassword,
   requestPasswordReset,
   resetPassword,
+  adminAccessInfo,
+  grantAdmin,
+  revokeAdmin,
 };

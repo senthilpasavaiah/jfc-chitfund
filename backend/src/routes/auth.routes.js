@@ -2,7 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const authController = require('../controllers/auth.controller');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, authorize } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const {
   loginRules,
@@ -48,5 +48,23 @@ router.post('/reset-password', authLimiter, resetPasswordRules, validate, authCo
 
 router.get('/me', authenticate, authController.me);
 router.post('/change-password', authenticate, changePasswordRules, validate, authController.changePassword);
+
+router.get('/admin-access', authenticate, authorize('ADMIN'), authController.adminAccessInfo);
+router.post(
+  '/admin-access/grant',
+  authenticate,
+  authorize('ADMIN'),
+  [body('memberId').isUUID().withMessage('Valid memberId is required')],
+  validate,
+  authController.grantAdmin
+);
+router.post(
+  '/admin-access/revoke',
+  authenticate,
+  authorize('ADMIN'),
+  [body('memberId').isUUID().withMessage('Valid memberId is required')],
+  validate,
+  authController.revokeAdmin
+);
 
 module.exports = router;

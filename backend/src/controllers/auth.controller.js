@@ -114,6 +114,23 @@ async function me(req, res) {
   res.json({ success: true, data: req.user });
 }
 
+async function adminAccessInfo(req, res) {
+  const data = await authService.adminAccessInfo();
+  res.json({ success: true, data });
+}
+
+async function grantAdmin(req, res) {
+  await authService.grantAdmin(req.body.memberId);
+  await recordAudit({ userId: req.user.id, action: 'ADMIN_GRANT', entityType: 'Member', entityId: req.body.memberId, ipAddress: req.ip });
+  res.json({ success: true, message: 'Admin access granted' });
+}
+
+async function revokeAdmin(req, res) {
+  await authService.revokeAdmin(req.body.memberId);
+  await recordAudit({ userId: req.user.id, action: 'ADMIN_REVOKE', entityType: 'Member', entityId: req.body.memberId, ipAddress: req.ip });
+  res.json({ success: true, message: 'Admin access revoked' });
+}
+
 module.exports = {
   register,
   login,
@@ -127,4 +144,7 @@ module.exports = {
   forgotPassword,
   resetPassword,
   me,
+  adminAccessInfo,
+  grantAdmin,
+  revokeAdmin,
 };
