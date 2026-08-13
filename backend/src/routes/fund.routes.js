@@ -1,5 +1,5 @@
 const express = require('express');
-const { body } = require('express-validator');
+const { body, param } = require('express-validator');
 const fundController = require('../controllers/fund.controller');
 const { authenticate, authorize } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -17,9 +17,22 @@ router.post(
     body('memberName').trim().notEmpty().withMessage('Member name is required'),
     body('amount').isFloat({ gt: 0 }).withMessage('Amount must be a positive number'),
     body('memberId').optional({ checkFalsy: true }).isUUID(),
+    body('donatedAt').optional().isISO8601(),
   ],
   validate,
   fundController.addDonation
+);
+router.patch(
+  '/donations/:id',
+  authorize('ADMIN', 'MANAGER'),
+  [
+    param('id').isUUID(),
+    body('memberName').optional().trim().notEmpty(),
+    body('amount').optional().isFloat({ gt: 0 }),
+    body('donatedAt').optional().isISO8601(),
+  ],
+  validate,
+  fundController.updateDonation
 );
 
 router.get('/santha', fundController.listSantha);
@@ -31,9 +44,22 @@ router.post(
     body('roundLabel').trim().notEmpty().withMessage('Round label is required (e.g. "Santha to Ravi")'),
     body('amount').isFloat({ gt: 0 }).withMessage('Amount must be a positive number'),
     body('memberId').optional({ checkFalsy: true }).isUUID(),
+    body('entryDate').optional().isISO8601(),
   ],
   validate,
   fundController.addSantha
+);
+router.patch(
+  '/santha/:id',
+  authorize('ADMIN', 'MANAGER'),
+  [
+    param('id').isUUID(),
+    body('memberName').optional().trim().notEmpty(),
+    body('amount').optional().isFloat({ gt: 0 }),
+    body('entryDate').optional().isISO8601(),
+  ],
+  validate,
+  fundController.updateSantha
 );
 
 router.get('/chit-profit-history', fundController.listChitProfitHistory);

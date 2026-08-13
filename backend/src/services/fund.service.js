@@ -1,20 +1,32 @@
 const { query } = require('../config/db');
+const ApiError = require('../utils/ApiError');
 
 async function listDonations() {
   const { rows } = await query(
     `SELECT d.*, m.status AS member_status FROM donations d
      LEFT JOIN members m ON m.id = d.member_id
-     ORDER BY d.created_at DESC`
+     ORDER BY d.donated_at DESC, d.created_at DESC`
   );
   return rows;
 }
 
-async function addDonation({ memberId, memberName, amount, donatedAt, notes }, recordedBy) {
+async function addDonation({ memberId, memberName, amount, donatedAt }) {
   const { rows } = await query(
-    `INSERT INTO donations (member_id, member_name, amount, donated_at, notes)
-     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-    [memberId || null, memberName, amount, donatedAt || new Date(), notes || null]
+    `INSERT INTO donations (member_id, member_name, amount, donated_at)
+     VALUES ($1,$2,$3,$4) RETURNING *`,
+    [memberId || null, memberName, amount, donatedAt || new Date()]
   );
+  return rows[0];
+}
+
+async function updateDonation(id, { memberName, amount, donatedAt }) {
+  const { rows } = await query(
+    `UPDATE donations SET member_name = COALESCE($1, member_name), amount = COALESCE($2, amount),
+            donated_at = COALESCE($3, donated_at)
+     WHERE id = $4 RETURNING *`,
+    [memberName || null, amount ?? null, donatedAt || null, id]
+  );
+  if (!rows[0]) throw ApiError.notFound('Donation entry not found');
   return rows[0];
 }
 
@@ -22,17 +34,28 @@ async function listSantha() {
   const { rows } = await query(
     `SELECT s.*, m.status AS member_status FROM santha_entries s
      LEFT JOIN members m ON m.id = s.member_id
-     ORDER BY s.created_at DESC`
+     ORDER BY s.entry_date DESC NULLS LAST, s.created_at DESC`
   );
   return rows;
 }
 
-async function addSantha({ memberId, memberName, roundLabel, amount, notes }) {
+async function addSantha({ memberId, memberName, roundLabel, amount, entryDate }) {
   const { rows } = await query(
-    `INSERT INTO santha_entries (member_id, member_name, round_label, amount, notes)
+    `INSERT INTO santha_entries (member_id, member_name, round_label, amount, entry_date)
      VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-    [memberId || null, memberName, roundLabel, amount, notes || null]
+    [memberId || null, memberName, roundLabel, amount, entryDate || new Date()]
   );
+  return rows[0];
+}
+
+async function updateSantha(id, { memberName, amount, entryDate }) {
+  const { rows } = await query(
+    `UPDATE santha_entries SET member_name = COALESCE($1, member_name), amount = COALESCE($2, amount),
+            entry_date = COALESCE($3, entry_date)
+     WHERE id = $4 RETURNING *`,
+    [memberName || null, amount ?? null, entryDate || null, id]
+  );
+  if (!rows[0]) throw ApiError.notFound('Santha entry not found');
   return rows[0];
 }
 
@@ -102,8 +125,10 @@ async function summary() {
 module.exports = {
   listDonations,
   addDonation,
+  updateDonation,
   listSantha,
   addSantha,
+  updateSantha,
   listChitProfitHistory,
   listSettlement,
   addSettlementYear,

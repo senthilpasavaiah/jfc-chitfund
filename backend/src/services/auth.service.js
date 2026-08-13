@@ -357,17 +357,27 @@ async function resetPassword(rawToken, newPassword) {
  * and not already be an admin).
  */
 async function adminAccessInfo() {
+  // The system Admin account is identified by its fixed login_username, not
+  // just role=ADMIN - this is what prevents it from ever appearing in the
+  // "granted admins" list (and being accidentally revoked, which would
+  // otherwise lock the real admin out of their own account).
+  const systemAdmin = await query(`SELECT id FROM users WHERE login_username = 'Admin'`);
+  const systemAdminUserId = systemAdmin.rows[0]?.id || null;
+
   const admins = await query(
     `SELECT m.id AS member_id, m.name FROM members m
      JOIN users u ON u.id = m.user_id
-     WHERE u.role = 'ADMIN'
-     ORDER BY m.name`
+     WHERE u.role = 'ADMIN' AND u.id IS DISTINCT FROM $1
+     ORDER BY m.name`,
+    [systemAdminUserId]
   );
   const eligible = await query(
     `SELECT m.id AS member_id, m.name FROM members m
      JOIN users u ON u.id = m.user_id
-     WHERE u.role != 'ADMIN' AND m.aadhaar_last4 IS NOT NULL AND m.status = 'ACTIVE'
-     ORDER BY m.name`
+     WHERE u.role != 'ADMIN' AND u.id IS DISTINCT FROM $1
+       AND m.aadhaar_last4 IS NOT NULL AND m.status = 'ACTIVE'
+     ORDER BY m.name`,
+    [systemAdminUserId]
   );
   return {
     totalAdmins: admins.rows.length + 1, // +1 for the fixed system Admin account
@@ -389,12 +399,22 @@ async function grantAdmin(memberId) {
 }
 
 async function revokeAdmin(memberId) {
-  const info = await adminAccessInfo();
-  if (info.totalAdmins <= 1) throw ApiError.badRequest('At least one admin must remain');
+  const systemAdmin = await query(`SELECT id FROM users WHERE login_username = 'Admin'`);
+  const systemAdminUserId = systemAdmin.rows[0]?.id || null;
 
   const { rows } = await query(`SELECT user_id FROM members WHERE id = $1`, [memberId]);
   const member = rows[0];
   if (!member || !member.user_id) throw ApiError.notFound('Member not found');
+
+  // Never allow revoking the fixed system Admin account itself, even if a
+  // member somehow ends up linked to it again in the future.
+  if (member.user_id === systemAdminUserId) {
+    throw ApiError.badRequest('The system Admin account cannot be revoked');
+  }
+
+  const info = await adminAccessInfo();
+  if (info.totalAdmins <= 1) throw ApiError.badRequest('At least one admin must remain');
+
   await query(`UPDATE users SET role = 'MEMBER' WHERE id = $1`, [member.user_id]);
 }
 

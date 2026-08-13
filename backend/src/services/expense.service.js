@@ -35,4 +35,15 @@ async function remove(id) {
   if (!rows[0]) throw ApiError.notFound('Expense not found');
 }
 
-module.exports = { create, list, remove };
+async function update(id, { category, description, amount, spentAt }) {
+  const { rows } = await query(
+    `UPDATE expenses SET category = COALESCE($1, category), description = COALESCE($2, description),
+            amount = COALESCE($3, amount), spent_at = COALESCE($4, spent_at)
+     WHERE id = $5 RETURNING *`,
+    [category || null, description || null, amount ?? null, spentAt || null, id]
+  );
+  if (!rows[0]) throw ApiError.notFound('Expense not found');
+  return rows[0];
+}
+
+module.exports = { create, list, remove, update };

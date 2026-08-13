@@ -34,4 +34,10 @@ async function paymentHistory(req, res) {
   res.json({ success: true, data: history });
 }
 
-module.exports = { create, list, getById, update, remove, paymentHistory };
+async function resetPassword(req, res) {
+  const result = await memberService.resetPassword(req.params.id);
+  await recordAudit({ userId: req.user.id, action: 'MEMBER_PASSWORD_RESET', entityType: 'Member', entityId: req.params.id, ipAddress: req.ip });
+  res.json({ success: true, message: `${result.memberName}'s password has been cleared. They can set a new one next time they log in with their Aadhaar.` });
+}
+
+module.exports = { create, list, getById, update, remove, paymentHistory, resetPassword };

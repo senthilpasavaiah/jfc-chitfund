@@ -175,4 +175,24 @@ async function paymentHistory(memberId) {
   return rows;
 }
 
-module.exports = { create, list, getById, update, remove, paymentHistory, serialize };
+/**
+ * Admin-triggered password reset for a member who's forgotten their
+ * password. Clears their password hash entirely (does not set a temporary
+ * one) so their next Aadhaar login goes through the same first-time
+ * "create a password" flow they used originally - no password is ever
+ * transmitted or visible to the admin.
+ */
+async function resetPassword(memberId) {
+  const { rows } = await query('SELECT user_id, name FROM members WHERE id = $1', [memberId]);
+  const member = rows[0];
+  if (!member) throw ApiError.notFound('Member not found');
+  if (!member.user_id) throw ApiError.badRequest('This member has no login account to reset');
+
+  await query(
+    `UPDATE users SET password_hash = NULL, failed_login_count = 0, locked_until = NULL WHERE id = $1`,
+    [member.user_id]
+  );
+  return { memberName: member.name };
+}
+
+module.exports = { create, list, getById, update, remove, paymentHistory, resetPassword, serialize };

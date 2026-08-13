@@ -12,6 +12,12 @@ async function addDonation(req, res) {
   res.status(201).json({ success: true, data: row });
 }
 
+async function updateDonation(req, res) {
+  const row = await fundService.updateDonation(req.params.id, req.body);
+  await recordAudit({ userId: req.user.id, action: 'DONATION_UPDATE', entityType: 'Donation', entityId: row.id, ipAddress: req.ip });
+  res.json({ success: true, data: row });
+}
+
 async function listSantha(req, res) {
   const rows = await fundService.listSantha();
   res.json({ success: true, data: rows });
@@ -21,6 +27,12 @@ async function addSantha(req, res) {
   const row = await fundService.addSantha(req.body);
   await recordAudit({ userId: req.user.id, action: 'SANTHA_ADD', entityType: 'SanthaEntry', entityId: row.id, ipAddress: req.ip });
   res.status(201).json({ success: true, data: row });
+}
+
+async function updateSantha(req, res) {
+  const row = await fundService.updateSantha(req.params.id, req.body);
+  await recordAudit({ userId: req.user.id, action: 'SANTHA_UPDATE', entityType: 'SanthaEntry', entityId: row.id, ipAddress: req.ip });
+  res.json({ success: true, data: row });
 }
 
 async function listChitProfitHistory(req, res) {
@@ -47,8 +59,10 @@ async function summary(req, res) {
 module.exports = {
   listDonations,
   addDonation,
+  updateDonation,
   listSantha,
   addSantha,
+  updateSantha,
   listChitProfitHistory,
   listSettlement,
   addSettlementYear,

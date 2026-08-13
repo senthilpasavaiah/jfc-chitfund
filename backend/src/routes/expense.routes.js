@@ -20,6 +20,7 @@ router.post(
     body('category').isIn(['OFFICE', 'MISCELLANEOUS']),
     body('description').trim().notEmpty(),
     body('amount').isFloat({ gt: 0 }),
+    body('spentAt').optional().isISO8601(),
   ],
   validate,
   async (req, res) => {
@@ -34,5 +35,23 @@ router.delete('/:id', authorize('ADMIN'), [param('id').isUUID()], validate, asyn
   await recordAudit({ userId: req.user.id, action: 'EXPENSE_DELETE', entityType: 'Expense', entityId: req.params.id, ipAddress: req.ip });
   res.json({ success: true, message: 'Expense deleted' });
 });
+
+router.patch(
+  '/:id',
+  authorize('ADMIN', 'MANAGER'),
+  [
+    param('id').isUUID(),
+    body('category').optional().isIn(['OFFICE', 'MISCELLANEOUS']),
+    body('description').optional().trim().notEmpty(),
+    body('amount').optional().isFloat({ gt: 0 }),
+    body('spentAt').optional().isISO8601(),
+  ],
+  validate,
+  async (req, res) => {
+    const expense = await expenseService.update(req.params.id, req.body);
+    await recordAudit({ userId: req.user.id, action: 'EXPENSE_UPDATE', entityType: 'Expense', entityId: req.params.id, ipAddress: req.ip });
+    res.json({ success: true, data: expense });
+  }
+);
 
 module.exports = router;

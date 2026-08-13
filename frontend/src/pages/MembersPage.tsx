@@ -39,6 +39,16 @@ export default function MembersPage() {
     }
   }
 
+  async function handleResetPassword(id: string, name: string) {
+    if (!window.confirm(`Reset ${name}'s password? They'll need to set a new one next time they log in with their Aadhaar.`)) return;
+    try {
+      const res = await client.post(`/members/${id}/reset-password`);
+      window.alert(res.data.message);
+    } catch (err: any) {
+      window.alert(err?.response?.data?.message || 'Could not reset password.');
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-end">
@@ -103,18 +113,19 @@ export default function MembersPage() {
               <th className="text-left px-4 py-3">Aadhaar</th>
               <th className="text-left px-4 py-3">Status</th>
               <th className="text-left px-4 py-3">Joined</th>
+              {canManage && <th className="text-left px-4 py-3">Action</th>}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={canManage ? 5 : 4} className="px-4 py-6 text-center text-ink-muted">
+                <td colSpan={canManage ? 6 : 4} className="px-4 py-6 text-center text-ink-muted">
                   Loading…
                 </td>
               </tr>
             ) : members.length === 0 ? (
               <tr>
-                <td colSpan={canManage ? 5 : 4} className="px-4 py-6 text-center text-ink-muted">
+                <td colSpan={canManage ? 6 : 4} className="px-4 py-6 text-center text-ink-muted">
                   No members found.
                 </td>
               </tr>
@@ -138,6 +149,16 @@ export default function MembersPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-ink-muted">{new Date(m.joinedDate).toLocaleDateString('en-IN')}</td>
+                  {canManage && (
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => handleResetPassword(m.id, m.name)}
+                        className="text-xs text-navy bg-navy/10 px-2.5 py-1 rounded-md cursor-pointer hover:bg-navy/20 transition-colors whitespace-nowrap"
+                      >
+                        Reset Password
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))
             )}

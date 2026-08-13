@@ -5,13 +5,17 @@ import { useAuth } from '../context/AuthContext';
 function formatINR(amount: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
 }
+function toDateInput(v: string | null) {
+  if (!v) return '';
+  return new Date(v).toISOString().slice(0, 10);
+}
 
-interface Donation { id: string; member_name: string; amount: string; donated_at: string; notes: string | null; member_status: string | null; }
-interface SanthaEntry { id: string; member_name: string; round_label: string; amount: string; member_status: string | null; }
+interface Donation { id: string; member_name: string; amount: string; donated_at: string; member_status: string | null; }
+interface SanthaEntry { id: string; member_name: string; round_label: string; amount: string; entry_date: string | null; member_status: string | null; }
 interface Expense { id: string; category: string; description: string; amount: string; spent_at: string; }
 interface ChitProfitRow { id: string; label: string; fiscal_year_label: string; profit_amount: string; }
 interface SettlementYear { fiscal_year_label: string; santha_donation: string; chit_profit: string; expenses: string; principal: string; profit_6pct: string; }
-interface SettlementData { years: SettlementYear[]; totals: { total_santha_donation: number; total_chit_profit: number; total_expenses: number; total_principal: number; total_profit: number; finalSettlementValue: number }; }
+interface SettlementData { years: SettlementYear[]; totals: { total_principal: number; total_profit: number; finalSettlementValue: number } }
 
 export default function FundsPage() {
   const { user } = useAuth();
@@ -25,10 +29,13 @@ export default function FundsPage() {
   const [settlement, setSettlement] = useState<SettlementData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [expForm, setExpForm] = useState({ category: 'OFFICE', description: '', amount: '' });
+  const [expForm, setExpForm] = useState({ date: '', category: 'OFFICE', description: '', amount: '' });
   const [santhaForm, setSanthaForm] = useState({ date: '', name: '', ravi: '', vv: '' });
   const [donationForm, setDonationForm] = useState({ date: '', name: '', amount: '' });
   const [error, setError] = useState<string | null>(null);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<Record<string, string>>({});
 
   async function loadAll() {
     setLoading(true);
@@ -51,12 +58,22 @@ export default function FundsPage() {
     loadAll();
   }, []);
 
+  const donationTotal = donations.reduce((s, d) => s + Number(d.amount), 0);
+  const santhaTotal = santha.reduce((s, x) => s + Number(x.amount), 0);
+  const expensesTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
+  const chitProfitTotal = chitProfit.reduce((s, c) => s + Number(c.profit_amount), 0);
+
   async function handleAddExpense(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     try {
-      await client.post('/expenses', { ...expForm, amount: Number(expForm.amount) });
-      setExpForm({ category: 'OFFICE', description: '', amount: '' });
+      await client.post('/expenses', {
+        category: expForm.category,
+        description: expForm.description,
+        amount: Number(expForm.amount),
+        spentAt: expForm.date || undefined,
+      });
+      setExpForm({ date: '', category: 'OFFICE', description: '', amount: '' });
       loadAll();
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Could not add expense.');
@@ -78,20 +95,10 @@ export default function FundsPage() {
     }
     try {
       if (raviAmt > 0) {
-        await client.post('/funds/santha', {
-          memberName: santhaForm.name,
-          roundLabel: 'Santha to Ravi',
-          amount: raviAmt,
-          notes: santhaForm.date || undefined,
-        });
+        await client.post('/funds/santha', { memberName: santhaForm.name, roundLabel: 'Santha to Ravi', amount: raviAmt, entryDate: santhaForm.date || undefined });
       }
       if (vvAmt > 0) {
-        await client.post('/funds/santha', {
-          memberName: santhaForm.name,
-          roundLabel: 'Santha to VV',
-          amount: vvAmt,
-          notes: santhaForm.date || undefined,
-        });
+        await client.post('/funds/santha', { memberName: santhaForm.name, roundLabel: 'Santha to VV', amount: vvAmt, entryDate: santhaForm.date || undefined });
       }
       setSanthaForm({ date: '', name: '', ravi: '', vv: '' });
       loadAll();
@@ -108,11 +115,7 @@ export default function FundsPage() {
       return;
     }
     try {
-      await client.post('/funds/donations', {
-        memberName: donationForm.name,
-        amount: Number(donationForm.amount),
-        donatedAt: donationForm.date || undefined,
-      });
+      await client.post('/funds/donations', { memberName: donationForm.name, amount: Number(donationForm.amount), donatedAt: donationForm.date || undefined });
       setDonationForm({ date: '', name: '', amount: '' });
       loadAll();
     } catch (err: any) {
@@ -120,28 +123,88 @@ export default function FundsPage() {
     }
   }
 
-  const TABS: { key: typeof tab; label: string }[] = [
+  function startEdit(id: string, values: Record<string, string>) {
+    setEditingId(id);
+    setEditValues(values);
+    setError(null);
+  }
+  function cancelEdit() {
+    setEditingId(null);
+    setEditValues({});
+  }
+
+  async function saveEditDonation(id: string) {
+    try {
+      await client.patch(`/funds/donations/${id}`, {
+        memberName: editValues.memberName,
+        amount: Number(editValues.amount),
+        donatedAt: editValues.date || undefined,
+      });
+      cancelEdit();
+      loadAll();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Could not update donation.');
+    }
+  }
+
+  async function saveEditSantha(id: string) {
+    try {
+      await client.patch(`/funds/santha/${id}`, {
+        memberName: editValues.memberName,
+        amount: Number(editValues.amount),
+        entryDate: editValues.date || undefined,
+      });
+      cancelEdit();
+      loadAll();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Could not update Santha entry.');
+    }
+  }
+
+  async function saveEditExpense(id: string) {
+    try {
+      await client.patch(`/expenses/${id}`, {
+        description: editValues.description,
+        amount: Number(editValues.amount),
+        spentAt: editValues.date || undefined,
+      });
+      cancelEdit();
+      loadAll();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Could not update expense.');
+    }
+  }
+
+  const TABS: { key: typeof tab; label: string; total?: number }[] = [
     { key: 'settlement', label: 'Settlement' },
-    { key: 'donation', label: 'Donation' },
-    { key: 'santha', label: 'Santha' },
-    { key: 'expenses', label: 'Expenses' },
-    { key: 'chitProfit', label: 'Chit Profit' },
+    { key: 'donation', label: 'Donation', total: donationTotal },
+    { key: 'santha', label: 'Santha', total: santhaTotal },
+    { key: 'expenses', label: 'Expenses', total: expensesTotal },
+    { key: 'chitProfit', label: 'Chit Profit', total: chitProfitTotal },
   ];
+  const activeTabInfo = TABS.find((t) => t.key === tab);
 
   return (
     <div className="space-y-6">
       <p className="text-ink-muted text-sm">Donation, Santha, Expenses, historical Chit profit, and the Final Settlement ledger.</p>
 
-      <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium w-fit flex-wrap">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`px-4 py-2 transition-colors cursor-pointer ${tab === t.key ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`px-4 py-2 transition-colors cursor-pointer ${tab === t.key ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {activeTabInfo?.total !== undefined && (
+          <span className="text-xs bg-gold/20 text-gold-dim px-3 py-1.5 rounded-full font-bold font-tabular">
+            {formatINR(activeTabInfo.total)}
+          </span>
+        )}
       </div>
 
       {loading ? (
@@ -190,7 +253,7 @@ export default function FundsPage() {
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-ink-muted">Imported from JFC_Santha_Settlement_2026.xlsx — historical years are a fixed ledger; totals above are always summed live, never hardcoded.</p>
+              <p className="text-xs text-ink-muted">Historical years are a fixed ledger import; totals above are always summed live, never hardcoded.</p>
             </div>
           )}
 
@@ -220,14 +283,33 @@ export default function FundsPage() {
               <div className="ledger-card overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-paper text-ink-muted text-xs uppercase tracking-wide">
-                    <tr><th className="text-left px-4 py-2">Member</th><th className="text-right px-4 py-2">Amount</th><th className="text-left px-4 py-2">Notes</th></tr>
+                    <tr><th className="text-left px-4 py-2">Date</th><th className="text-left px-4 py-2">Member</th><th className="text-right px-4 py-2">Amount</th>{canManage && <th className="text-right px-4 py-2">Action</th>}</tr>
                   </thead>
                   <tbody>
                     {donations.map((d) => (
                       <tr key={d.id} className="border-t border-line">
-                        <td className="px-4 py-2.5">{d.member_name}{!d.member_status && <span className="text-xs text-ink-muted ml-1">(former member)</span>}</td>
-                        <td className="px-4 py-2.5 text-right font-tabular">{formatINR(Number(d.amount))}</td>
-                        <td className="px-4 py-2.5 text-ink-muted text-xs">{d.notes}</td>
+                        {editingId === d.id ? (
+                          <>
+                            <td className="px-4 py-2"><input type="date" value={editValues.date} onChange={(e) => setEditValues({ ...editValues, date: e.target.value })} className="rounded border border-line px-2 py-1 text-xs w-full" /></td>
+                            <td className="px-4 py-2"><input value={editValues.memberName} onChange={(e) => setEditValues({ ...editValues, memberName: e.target.value })} className="rounded border border-line px-2 py-1 text-xs w-full" /></td>
+                            <td className="px-4 py-2"><input type="number" value={editValues.amount} onChange={(e) => setEditValues({ ...editValues, amount: e.target.value })} className="rounded border border-line px-2 py-1 text-xs w-full text-right" /></td>
+                            <td className="px-4 py-2 text-right whitespace-nowrap">
+                              <button onClick={() => saveEditDonation(d.id)} className="text-xs text-success bg-success/10 px-2 py-1 rounded cursor-pointer mr-1">Save</button>
+                              <button onClick={cancelEdit} className="text-xs text-ink-muted bg-line px-2 py-1 rounded cursor-pointer">Cancel</button>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-4 py-2.5 text-ink-muted">{d.donated_at ? new Date(d.donated_at).toLocaleDateString('en-IN') : '—'}</td>
+                            <td className="px-4 py-2.5">{d.member_name}{!d.member_status && <span className="text-xs text-ink-muted ml-1">(former member)</span>}</td>
+                            <td className="px-4 py-2.5 text-right font-tabular">{formatINR(Number(d.amount))}</td>
+                            {canManage && (
+                              <td className="px-4 py-2.5 text-right">
+                                <button onClick={() => startEdit(d.id, { date: toDateInput(d.donated_at), memberName: d.member_name, amount: d.amount })} className="text-xs text-navy bg-navy/10 px-2 py-1 rounded cursor-pointer">Edit</button>
+                              </td>
+                            )}
+                          </>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -266,14 +348,35 @@ export default function FundsPage() {
               <div className="ledger-card overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-paper text-ink-muted text-xs uppercase tracking-wide">
-                    <tr><th className="text-left px-4 py-2">Member</th><th className="text-left px-4 py-2">Round</th><th className="text-right px-4 py-2">Amount</th></tr>
+                    <tr><th className="text-left px-4 py-2">Date</th><th className="text-left px-4 py-2">Member</th><th className="text-left px-4 py-2">Round</th><th className="text-right px-4 py-2">Amount</th>{canManage && <th className="text-right px-4 py-2">Action</th>}</tr>
                   </thead>
                   <tbody>
                     {santha.map((s) => (
                       <tr key={s.id} className="border-t border-line">
-                        <td className="px-4 py-2.5">{s.member_name}{!s.member_status && <span className="text-xs text-ink-muted ml-1">(former member)</span>}</td>
-                        <td className="px-4 py-2.5">{s.round_label}</td>
-                        <td className="px-4 py-2.5 text-right font-tabular">{formatINR(Number(s.amount))}</td>
+                        {editingId === s.id ? (
+                          <>
+                            <td className="px-4 py-2"><input type="date" value={editValues.date} onChange={(e) => setEditValues({ ...editValues, date: e.target.value })} className="rounded border border-line px-2 py-1 text-xs w-full" /></td>
+                            <td className="px-4 py-2"><input value={editValues.memberName} onChange={(e) => setEditValues({ ...editValues, memberName: e.target.value })} className="rounded border border-line px-2 py-1 text-xs w-full" /></td>
+                            <td className="px-4 py-2 text-ink-muted text-xs">{s.round_label}</td>
+                            <td className="px-4 py-2"><input type="number" value={editValues.amount} onChange={(e) => setEditValues({ ...editValues, amount: e.target.value })} className="rounded border border-line px-2 py-1 text-xs w-full text-right" /></td>
+                            <td className="px-4 py-2 text-right whitespace-nowrap">
+                              <button onClick={() => saveEditSantha(s.id)} className="text-xs text-success bg-success/10 px-2 py-1 rounded cursor-pointer mr-1">Save</button>
+                              <button onClick={cancelEdit} className="text-xs text-ink-muted bg-line px-2 py-1 rounded cursor-pointer">Cancel</button>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-4 py-2.5 text-ink-muted">{s.entry_date ? new Date(s.entry_date).toLocaleDateString('en-IN') : '—'}</td>
+                            <td className="px-4 py-2.5">{s.member_name}{!s.member_status && <span className="text-xs text-ink-muted ml-1">(former member)</span>}</td>
+                            <td className="px-4 py-2.5">{s.round_label}</td>
+                            <td className="px-4 py-2.5 text-right font-tabular">{formatINR(Number(s.amount))}</td>
+                            {canManage && (
+                              <td className="px-4 py-2.5 text-right">
+                                <button onClick={() => startEdit(s.id, { date: toDateInput(s.entry_date), memberName: s.member_name, amount: s.amount })} className="text-xs text-navy bg-navy/10 px-2 py-1 rounded cursor-pointer">Edit</button>
+                              </td>
+                            )}
+                          </>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -283,36 +386,71 @@ export default function FundsPage() {
           )}
 
           {tab === 'expenses' && (
-            <>
+            <div className="space-y-4">
               {canManage && (
-                <form onSubmit={handleAddExpense} className="ledger-card p-5 grid grid-cols-3 gap-4">
-                  <select value={expForm.category} onChange={(e) => setExpForm({ ...expForm, category: e.target.value })} className="rounded-lg border border-line px-3 py-2 text-sm">
-                    <option value="OFFICE">Office</option>
-                    <option value="MISCELLANEOUS">Miscellaneous</option>
-                  </select>
-                  <input required placeholder="Description" value={expForm.description} onChange={(e) => setExpForm({ ...expForm, description: e.target.value })} className="rounded-lg border border-line px-3 py-2 text-sm" />
-                  <input required type="number" placeholder="Amount (₹)" value={expForm.amount} onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })} className="rounded-lg border border-line px-3 py-2 text-sm" />
-                  {error && <p className="col-span-3 text-sm text-danger">{error}</p>}
-                  <button type="submit" className="col-span-3 rounded-lg bg-gold text-navy py-2 text-sm font-medium cursor-pointer">Add expense</button>
+                <form onSubmit={handleAddExpense} className="ledger-card p-5">
+                  <h3 className="font-bold mb-3">Add Expense</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                    <div>
+                      <label className="block text-xs font-semibold text-ink-muted mb-1">Date</label>
+                      <input type="date" value={expForm.date} onChange={(e) => setExpForm({ ...expForm, date: e.target.value })} className="w-full rounded-lg border border-line px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-ink-muted mb-1">Category</label>
+                      <select value={expForm.category} onChange={(e) => setExpForm({ ...expForm, category: e.target.value })} className="w-full rounded-lg border border-line px-3 py-2 text-sm">
+                        <option value="OFFICE">Office</option>
+                        <option value="MISCELLANEOUS">Miscellaneous</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-ink-muted mb-1">Description</label>
+                      <input required placeholder="Purpose of expense" value={expForm.description} onChange={(e) => setExpForm({ ...expForm, description: e.target.value })} className="w-full rounded-lg border border-line px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-ink-muted mb-1">Amount (₹)</label>
+                      <input required type="number" placeholder="0" value={expForm.amount} onChange={(e) => setExpForm({ ...expForm, amount: e.target.value })} className="w-full rounded-lg border border-line px-3 py-2 text-sm" />
+                    </div>
+                    <button type="submit" className="rounded-lg bg-gold text-navy px-5 py-2 text-sm font-bold cursor-pointer whitespace-nowrap">+ Add</button>
+                  </div>
+                  {error && <p className="text-sm text-danger mt-2">{error}</p>}
                 </form>
               )}
               <div className="ledger-card overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-paper text-ink-muted text-xs uppercase tracking-wide">
-                    <tr><th className="text-left px-4 py-2">Date</th><th className="text-left px-4 py-2">Description</th><th className="text-right px-4 py-2">Amount</th></tr>
+                    <tr><th className="text-left px-4 py-2">Date</th><th className="text-left px-4 py-2">Description</th><th className="text-right px-4 py-2">Amount</th>{canManage && <th className="text-right px-4 py-2">Action</th>}</tr>
                   </thead>
                   <tbody>
                     {expenses.map((e) => (
                       <tr key={e.id} className="border-t border-line">
-                        <td className="px-4 py-2.5 text-ink-muted">{new Date(e.spent_at).toLocaleDateString('en-IN')}</td>
-                        <td className="px-4 py-2.5">{e.description}</td>
-                        <td className="px-4 py-2.5 text-right font-tabular">{formatINR(Number(e.amount))}</td>
+                        {editingId === e.id ? (
+                          <>
+                            <td className="px-4 py-2"><input type="date" value={editValues.date} onChange={(ev) => setEditValues({ ...editValues, date: ev.target.value })} className="rounded border border-line px-2 py-1 text-xs w-full" /></td>
+                            <td className="px-4 py-2"><input value={editValues.description} onChange={(ev) => setEditValues({ ...editValues, description: ev.target.value })} className="rounded border border-line px-2 py-1 text-xs w-full" /></td>
+                            <td className="px-4 py-2"><input type="number" value={editValues.amount} onChange={(ev) => setEditValues({ ...editValues, amount: ev.target.value })} className="rounded border border-line px-2 py-1 text-xs w-full text-right" /></td>
+                            <td className="px-4 py-2 text-right whitespace-nowrap">
+                              <button onClick={() => saveEditExpense(e.id)} className="text-xs text-success bg-success/10 px-2 py-1 rounded cursor-pointer mr-1">Save</button>
+                              <button onClick={cancelEdit} className="text-xs text-ink-muted bg-line px-2 py-1 rounded cursor-pointer">Cancel</button>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-4 py-2.5 text-ink-muted">{new Date(e.spent_at).toLocaleDateString('en-IN')}</td>
+                            <td className="px-4 py-2.5">{e.description}</td>
+                            <td className="px-4 py-2.5 text-right font-tabular">{formatINR(Number(e.amount))}</td>
+                            {canManage && (
+                              <td className="px-4 py-2.5 text-right">
+                                <button onClick={() => startEdit(e.id, { date: toDateInput(e.spent_at), description: e.description, amount: e.amount })} className="text-xs text-navy bg-navy/10 px-2 py-1 rounded cursor-pointer">Edit</button>
+                              </td>
+                            )}
+                          </>
+                        )}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </>
+            </div>
           )}
 
           {tab === 'chitProfit' && (
@@ -331,6 +469,9 @@ export default function FundsPage() {
                   ))}
                 </tbody>
               </table>
+              <p className="text-xs text-ink-muted px-4 py-3 border-t border-line">
+                Historical pre-app chit rounds — read-only import. New chits run through the Chit Management module instead.
+              </p>
             </div>
           )}
         </>

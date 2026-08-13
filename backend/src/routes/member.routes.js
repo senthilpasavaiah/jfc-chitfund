@@ -15,5 +15,6 @@ router.get('/:id/payments', idParamRule, validate, memberController.paymentHisto
 router.post('/', authorize('ADMIN', 'MANAGER'), createMemberRules, validate, memberController.create);
 router.patch('/:id', authorize('ADMIN', 'MANAGER'), updateMemberRules, validate, memberController.update);
 router.delete('/:id', authorize('ADMIN'), idParamRule, validate, memberController.remove);
+router.post('/:id/reset-password', authorize('ADMIN', 'MANAGER'), idParamRule, validate, memberController.resetPassword);
 
 module.exports = router;
