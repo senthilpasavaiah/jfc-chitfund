@@ -25,44 +25,75 @@ export interface Member {
   notes: string | null;
 }
 
-export type ChitStatus = 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'CANCELLED';
+export type ChitStatus = 'upcoming' | 'ongoing' | 'completed';
+export type RateSchedule = 'standard' | 'jfc';
 
 export interface Chit {
   id: string;
   refNumber: string;
-  name: string;
-  chitValue: number;
+  valueLakh: number;
   totalMonths: number;
-  monthlyInstallment: number;
-  commissionPercent: number;
+  rateSchedule: RateSchedule;
   startDate: string | null;
   endDate: string | null;
   status: ChitStatus;
+  baseMonthly: number;
+  commissionPerMonth: number;
+  monthsElapsed: number;
+  monthsRemaining: number;
+  createdAt: string;
 }
 
-export interface ChitMemberSummary {
-  id: string;
-  memberId: string;
-  name: string;
-  mobileNumber: string;
-  slotNumber: number | null;
-  isActive: boolean;
+export interface ChitParticipantSlot {
+  slotIndex: number;
+  memberId: string | null;
+  name: string | null;
+  isClub: boolean;
 }
 
-export interface AuctionSummary {
-  id: string;
-  monthNumber: number;
-  scheduledDate: string;
-  status: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED';
-  winnerId: string | null;
-  discountAmount: number | null;
-  dividendPerMember: number | null;
-  organizerCommission: number | null;
+export interface ChitMonthSummary {
+  monthIndex: number;
+  label: string;
+  drawnBy: string | null;
+  drawnByMemberId: string | null;
+  shuffled: boolean;
+  paidCount: number;
+  capacity: number;
 }
 
 export interface ChitDetail extends Chit {
-  members: ChitMemberSummary[];
-  auctions: AuctionSummary[];
+  capacity: number;
+  filled: number;
+  isFull: boolean;
+  isParticipant: boolean;
+  participants: ChitParticipantSlot[];
+  timeline: ChitMonthSummary[];
+}
+
+export interface ChitMonthParticipant {
+  memberId: string;
+  name: string;
+  paid: boolean;
+  isDrawer: boolean;
+}
+
+export interface ChitMonthRequest {
+  memberId: string;
+  name: string;
+  type: 'mandatory' | 'planning' | 'none';
+}
+
+export interface ChitMonthDetail {
+  monthIndex: number;
+  label: string;
+  isClub: boolean;
+  drawnByName: string | null;
+  drawnByMemberId: string | null;
+  shuffled: boolean;
+  participants: ChitMonthParticipant[];
+  requests: ChitMonthRequest[];
+  monthlyPayment: number;
+  payout: number;
 }
 
 export interface DashboardSummary {

@@ -33,8 +33,9 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// 8mb to accommodate base64-encoded payment-proof screenshots.
+app.use(express.json({ limit: '8mb' }));
+app.use(express.urlencoded({ extended: true, limit: '8mb' }));
 app.use(cookieParser());
 app.use(compression());
 app.use(hpp());
