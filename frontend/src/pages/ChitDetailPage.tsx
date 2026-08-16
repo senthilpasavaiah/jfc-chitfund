@@ -31,6 +31,9 @@ export default function ChitDetailPage() {
   const [myProofStatus, setMyProofStatus] = useState<{ status: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [pendingProofs, setPendingProofs] = useState<PendingProof[]>([]);
+  const [markingMemberId, setMarkingMemberId] = useState<string | null>(null);
+  const [shuffleCycleName, setShuffleCycleName] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function loadChit() {
     const res = await client.get(`/chits/${id}`);
@@ -81,14 +84,68 @@ export default function ChitDetailPage() {
     if (p === 'participants') loadPendingProofs();
   }
 
-  async function handleTogglePaid(memberId: string) {
+  async function handleTogglePaid(memberId: string, currentlyPaid: boolean) {
     setError(null);
+    // Turning OFF (undo a mistake) doesn't need proof - just flip it back.
+    if (currentlyPaid) {
+      try {
+        await client.patch(`/chits/${id}/months/${selectedMonth}/payment`, { memberId });
+        loadMonth(selectedMonth);
+        loadChit();
+      } catch (err: any) {
+        setError(err?.response?.data?.message || 'Could not update payment.');
+      }
+      return;
+    }
+    // Turning ON requires proof - open the inline choice instead of toggling directly.
+    setMarkingMemberId((cur) => (cur === memberId ? null : memberId));
+  }
+
+  async function handleAdminUploadProof(memberId: string, file: File) {
+    setError(null);
+    setUploading(true);
     try {
-      await client.patch(`/chits/${id}/months/${selectedMonth}/payment`, { memberId });
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const [meta, base64] = dataUrl.split(',');
+      const mimeType = meta.match(/data:(.*);base64/)?.[1] || file.type;
+      await client.post(`/chits/${id}/months/${selectedMonth}/payment-proof`, { imageData: base64, imageMimeType: mimeType, memberId });
+      setMarkingMemberId(null);
       loadMonth(selectedMonth);
       loadChit();
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Could not update payment.');
+      setError(err?.response?.data?.message || 'Could not upload payment proof.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleMarkManual(memberId: string) {
+    setError(null);
+    try {
+      await client.post(`/chits/${id}/months/${selectedMonth}/payment-manual`, { memberId });
+      setMarkingMemberId(null);
+      loadMonth(selectedMonth);
+      loadChit();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Could not mark as paid.');
+    }
+  }
+
+  async function handleDeleteChit() {
+    if (!chit) return;
+    if (!window.confirm(`Delete ${chit.refNumber} permanently? This removes all its months, payments, and history. This can't be undone.`)) return;
+    setDeleting(true);
+    try {
+      await client.delete(`/chits/${id}`);
+      window.location.href = '/chits';
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Could not delete chit.');
+      setDeleting(false);
     }
   }
 
@@ -107,16 +164,30 @@ export default function ChitDetailPage() {
     if (!monthDetail) return;
     setError(null);
     setShuffling(true);
+    const names = monthDetail.participants.map((p) => p.name);
+    let cycleCount = 0;
+    // Cycle through names, slowing down over ~1.8s (classic "wheel slowing
+    // to a stop" feel), landing on the real server-decided winner - the
+    // animation never picks the winner itself, it just reveals it.
+    const cycleInterval = setInterval(() => {
+      setShuffleCycleName(names[Math.floor(Math.random() * names.length)]);
+      cycleCount++;
+    }, 90);
+
     try {
       const memberIds = monthDetail.participants.map((p) => p.memberId);
       const res = await client.post(`/chits/${id}/months/${selectedMonth}/shuffle`, { memberIds });
       setTimeout(() => {
+        clearInterval(cycleInterval);
+        setShuffleCycleName(null);
         setShuffleResult({ winnerName: res.data.data.winnerName });
         setShuffling(false);
         loadMonth(selectedMonth);
         loadChit();
-      }, 1200);
+      }, 1800);
     } catch (err: any) {
+      clearInterval(cycleInterval);
+      setShuffleCycleName(null);
       setError(err?.response?.data?.message || 'Could not shuffle.');
       setShuffling(false);
     }
@@ -205,16 +276,34 @@ export default function ChitDetailPage() {
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
+      {isAdmin && chit && (
+        <div className="flex justify-end">
+          <button
+            onClick={handleDeleteChit}
+            disabled={deleting}
+            className="text-xs text-danger bg-danger/10 px-3 py-1.5 rounded-md cursor-pointer hover:bg-danger/20 transition-colors disabled:opacity-50"
+          >
+            {deleting ? 'Deleting…' : '🗑 Delete this chit'}
+          </button>
+        </div>
+      )}
+
       {isAdmin && monthDetail && !monthDetail.isClub && (
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
           <button onClick={() => togglePanel('participants')} className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-medium cursor-pointer hover:border-navy-light">
             {panel === 'participants' ? 'Hide Participants' : 'View Participants'}
           </button>
-          {!monthDetail.shuffled && (
-            <button onClick={handleShuffle} disabled={shuffling} className="rounded-lg bg-navy text-white px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-60">
-              {shuffling ? 'Shuffling…' : '🎲 Shuffle'}
-            </button>
-          )}
+          {/* Shuffle stays visible even after use - just fades to show it's spent, matching a one-time-use lottery ticket. */}
+          <button
+            onClick={handleShuffle}
+            disabled={shuffling || monthDetail.shuffled}
+            title={monthDetail.shuffled ? 'Already used for this month - the result is final' : undefined}
+            className={`rounded-lg bg-navy text-white px-4 py-2 text-sm font-medium transition-opacity ${
+              monthDetail.shuffled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+            } ${shuffling ? 'opacity-80' : ''}`}
+          >
+            {shuffling ? (shuffleCycleName || 'Shuffling…') : monthDetail.shuffled ? '🎲 Shuffled ✓' : '🎲 Shuffle'}
+          </button>
           <button onClick={() => togglePanel('ledger')} className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-medium cursor-pointer hover:border-navy-light">
             {panel === 'ledger' ? 'Hide Income & Expenses' : 'Income & Expenses'}
           </button>
@@ -227,54 +316,79 @@ export default function ChitDetailPage() {
         </div>
       )}
 
-      {isAdmin && panel === 'participants' && monthDetail && (
-        <div className="ledger-card p-5">
-          <div className="text-xs uppercase tracking-wide text-ink-muted mb-3">Participants — Payment &amp; Draw Assignment</div>
-          {pendingProofs.length > 0 && (
-            <div className="mb-4 p-3 bg-gold/10 border border-gold rounded-lg">
-              <div className="text-xs font-bold mb-2">Pending payment proofs</div>
-              {pendingProofs.map((p) => (
-                <div key={p.id} className="flex items-center justify-between text-sm py-1">
-                  <span>{p.member_name} — Month {p.month_index + 1}</span>
-                  <div className="flex gap-1.5">
-                    <a href={`${client.defaults.baseURL}/chits/payment-proofs/${p.id}/image`} target="_blank" rel="noreferrer" className="text-xs text-navy underline">View</a>
-                    <button onClick={() => handleReviewProof(p.id, 'confirm')} className="text-xs bg-success text-white px-2 py-0.5 rounded cursor-pointer">Confirm</button>
-                    <button onClick={() => handleReviewProof(p.id, 'reject')} className="text-xs bg-danger text-white px-2 py-0.5 rounded cursor-pointer">Reject</button>
-                  </div>
+      <div
+        className="grid transition-all duration-300 ease-out"
+        style={{ gridTemplateRows: isAdmin && panel === 'participants' && monthDetail ? '1fr' : '0fr' }}
+      >
+        <div className="overflow-hidden min-h-0">
+          {isAdmin && monthDetail && (
+            <div className="ledger-card p-5 mt-0">
+              <div className="text-xs uppercase tracking-wide text-ink-muted mb-3">Participants — Payment &amp; Draw Assignment</div>
+              {pendingProofs.length > 0 && (
+                <div className="mb-4 p-3 bg-gold/10 border border-gold rounded-lg">
+                  <div className="text-xs font-bold mb-2">Pending payment proofs</div>
+                  {pendingProofs.map((p) => (
+                    <div key={p.id} className="flex items-center justify-between text-sm py-1">
+                      <span>{p.member_name} — Month {p.month_index + 1}</span>
+                      <div className="flex gap-1.5">
+                        <a href={`${client.defaults.baseURL}/chits/payment-proofs/${p.id}/image`} target="_blank" rel="noreferrer" className="text-xs text-navy underline">View</a>
+                        <button onClick={() => handleReviewProof(p.id, 'confirm')} className="text-xs bg-success text-white px-2 py-0.5 rounded cursor-pointer">Confirm</button>
+                        <button onClick={() => handleReviewProof(p.id, 'reject')} className="text-xs bg-danger text-white px-2 py-0.5 rounded cursor-pointer">Reject</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {monthDetail.participants.map((p) => (
+                  <div key={p.memberId} className="border border-line rounded-lg p-3 flex flex-col items-center gap-1.5 text-center">
+                    <div className="w-10 h-10 rounded-full bg-navy text-white flex items-center justify-center text-sm font-bold">{initials(p.name)}</div>
+                    <div className="text-sm font-medium">{p.name}</div>
+                    <label className="flex items-center gap-1.5 text-xs text-ink-muted">
+                      <span>Paid</span>
+                      <button
+                        role="switch" aria-checked={p.paid}
+                        onClick={() => handleTogglePaid(p.memberId, p.paid)}
+                        className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${p.paid ? 'bg-success' : 'bg-line'}`}
+                      >
+                        <span className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform" style={{ transform: p.paid ? 'translateX(16px)' : 'translateX(0)' }} />
+                      </button>
+                    </label>
+
+                    {markingMemberId === p.memberId && !p.paid && (
+                      <div className="w-full bg-paper rounded-md p-2 space-y-1.5">
+                        <p className="text-[10px] text-ink-muted">Proof needed to mark paid:</p>
+                        <label className="block text-xs bg-navy text-white rounded px-2 py-1 cursor-pointer text-center">
+                          {uploading ? 'Uploading…' : '📤 Upload screenshot'}
+                          <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={(e) => e.target.files?.[0] && handleAdminUploadProof(p.memberId, e.target.files[0])} />
+                        </label>
+                        <button onClick={() => handleMarkManual(p.memberId)} className="w-full text-xs bg-line text-ink px-2 py-1 rounded cursor-pointer">Mark manually (no screenshot)</button>
+                        <button onClick={() => setMarkingMemberId(null)} className="w-full text-[10px] text-ink-muted cursor-pointer">Cancel</button>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => handleAssignDraw(p.memberId)}
+                      disabled={monthDetail.shuffled}
+                      className="text-xs bg-navy/10 text-navy px-2.5 py-1 rounded-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {p.isDrawer ? '✓ Assigned' : 'Assign as Drawer'}
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {monthDetail.participants.map((p) => (
-              <div key={p.memberId} className="border border-line rounded-lg p-3 flex flex-col items-center gap-1.5 text-center">
-                <div className="w-10 h-10 rounded-full bg-navy text-white flex items-center justify-center text-sm font-bold">{initials(p.name)}</div>
-                <div className="text-sm font-medium">{p.name}</div>
-                <label className="flex items-center gap-1.5 text-xs text-ink-muted">
-                  <span>Paid</span>
-                  <button
-                    role="switch" aria-checked={p.paid}
-                    onClick={() => handleTogglePaid(p.memberId)}
-                    className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${p.paid ? 'bg-success' : 'bg-line'}`}
-                  >
-                    <span className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform" style={{ transform: p.paid ? 'translateX(16px)' : 'translateX(0)' }} />
-                  </button>
-                </label>
-                <button
-                  onClick={() => handleAssignDraw(p.memberId)}
-                  disabled={monthDetail.shuffled}
-                  className="text-xs bg-navy/10 text-navy px-2.5 py-1 rounded-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {p.isDrawer ? '✓ Assigned' : 'Assign as Drawer'}
-                </button>
-              </div>
-            ))}
-          </div>
         </div>
-      )}
+      </div>
 
-      {isAdmin && panel === 'ledger' && ledger && (
-        <div className="ledger-card p-5">
+      <div
+        className="grid transition-all duration-300 ease-out"
+        style={{ gridTemplateRows: isAdmin && panel === 'ledger' && ledger ? '1fr' : '0fr' }}
+      >
+        <div className="overflow-hidden min-h-0">
+          {isAdmin && ledger && (
+            <div className="ledger-card p-5 mt-0">
           <div className="flex items-center justify-between mb-1">
             <h3 className="font-bold">Chit Income &amp; Expenses</h3>
             <span className="text-xs bg-gold/20 text-gold-dim px-2.5 py-1 rounded-full font-medium">Auto-booked</span>
@@ -313,54 +427,59 @@ export default function ChitDetailPage() {
               ))}
             </tbody>
           </table>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {!isAdmin && monthDetail && (
         <div className="ledger-card p-5 space-y-3">
           <h3 className="font-bold">{monthDetail.label}</h3>
-          {monthDetail.isClub ? (
-            <p className="text-sm text-ink-muted">This month's pot goes to Jolly Friends Club — no draw needed.</p>
-          ) : (
-            <>
-              <div className="flex justify-between text-sm border-b border-line pb-2">
-                <span className="text-ink-muted">Your payment this month</span>
-                <span className="font-tabular font-bold">{formatINR(monthDetail.monthlyPayment)}</span>
-              </div>
-              {monthDetail.drawnByName && (
-                <p className="text-sm">Drawn by: <strong>{monthDetail.drawnByName}</strong></p>
-              )}
+          {monthDetail.isClub && (
+            <p className="text-sm text-ink-muted bg-gold/10 rounded-lg px-3 py-2">
+              This month's pot goes to Jolly Friends Club — but you (and every participant) still pay your usual monthly amount.
+            </p>
+          )}
 
-              {myProofStatus?.status === 'confirmed' && (
-                <p className="text-sm text-success font-medium">✓ Your payment for this month is confirmed.</p>
-              )}
-              {myProofStatus?.status === 'pending' && (
-                <p className="text-sm text-gold-dim font-medium">⏳ Your payment proof is awaiting admin review.</p>
-              )}
-              {myProofStatus?.status === 'rejected' && (
-                <p className="text-sm text-danger">Your last submission was rejected. Please upload a new screenshot.</p>
-              )}
-              {(!myProofStatus || myProofStatus.status === 'rejected') && (
-                <div>
-                  <label className="inline-block rounded-lg bg-navy text-white px-4 py-2 text-sm font-medium cursor-pointer hover:bg-navy-light transition-colors">
-                    {uploading ? 'Uploading…' : '📤 Upload Payment Screenshot'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      disabled={uploading}
-                      onChange={(e) => e.target.files?.[0] && handleUploadProof(e.target.files[0])}
-                    />
-                  </label>
-                  <p className="text-xs text-ink-muted mt-1.5">Upload your bank transfer / UPI / SMS screenshot — an admin will verify and confirm it.</p>
-                </div>
-              )}
+          <div className="flex justify-between text-sm border-b border-line pb-2">
+            <span className="text-ink-muted">Your payment this month</span>
+            <span className="font-tabular font-bold">{formatINR(monthDetail.monthlyPayment)}</span>
+          </div>
+          {monthDetail.drawnByName && (
+            <p className="text-sm">Drawn by: <strong>{monthDetail.drawnByName}</strong></p>
+          )}
 
-              <div className="flex gap-2 pt-2 border-t border-line">
-                <button onClick={() => handleSubmitRequest('mandatory')} className="text-xs bg-danger/10 text-danger px-3 py-1.5 rounded-md cursor-pointer">I need this month (mandatory)</button>
-                <button onClick={() => handleSubmitRequest('planning')} className="text-xs bg-gold/20 text-gold-dim px-3 py-1.5 rounded-md cursor-pointer">Planning to take this month</button>
-              </div>
-            </>
+          {myProofStatus?.status === 'confirmed' && (
+            <p className="text-sm text-success font-medium">✓ Your payment for this month is confirmed.</p>
+          )}
+          {myProofStatus?.status === 'pending' && (
+            <p className="text-sm text-gold-dim font-medium">⏳ Your payment proof is awaiting admin review.</p>
+          )}
+          {myProofStatus?.status === 'rejected' && (
+            <p className="text-sm text-danger">Your last submission was rejected. Please upload a new screenshot.</p>
+          )}
+          {(!myProofStatus || myProofStatus.status === 'rejected') && (
+            <div>
+              <label className="inline-block rounded-lg bg-navy text-white px-4 py-2 text-sm font-medium cursor-pointer hover:bg-navy-light transition-colors">
+                {uploading ? 'Uploading…' : '📤 Upload Payment Screenshot'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={(e) => e.target.files?.[0] && handleUploadProof(e.target.files[0])}
+                />
+              </label>
+              <p className="text-xs text-ink-muted mt-1.5">Upload your bank transfer / UPI / SMS screenshot — an admin will verify and confirm it.</p>
+            </div>
+          )}
+
+          {/* Once a month's winner is already decided, requesting it no longer makes sense. */}
+          {!monthDetail.isClub && !monthDetail.drawnByMemberId && (
+            <div className="flex gap-2 pt-2 border-t border-line">
+              <button onClick={() => handleSubmitRequest('mandatory')} className="text-xs bg-danger/10 text-danger px-3 py-1.5 rounded-md cursor-pointer">I need this month (mandatory)</button>
+              <button onClick={() => handleSubmitRequest('planning')} className="text-xs bg-gold/20 text-gold-dim px-3 py-1.5 rounded-md cursor-pointer">Planning to take this month</button>
+            </div>
           )}
         </div>
       )}

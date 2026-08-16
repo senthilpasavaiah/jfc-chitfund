@@ -2,9 +2,11 @@ const paymentProofService = require('../services/paymentProof.service');
 const { recordAudit } = require('../utils/audit');
 
 async function submit(req, res) {
-  // A member submits their own proof; an admin/manager can submit on behalf
-  // of a member (e.g. when proof was shared over WhatsApp instead).
+  // A member submits their own proof (goes to pending review). An
+  // admin/manager can submit on behalf of a member - since the admin IS
+  // the authority, that's auto-confirmed immediately rather than queued.
   const memberId = req.body.memberId || req.user.memberId;
+  const isAdminSubmitting = req.user.role === 'ADMIN' || req.user.role === 'MANAGER';
   const proof = await paymentProofService.submitProof({
     chitId: req.params.id,
     monthIndex: Number(req.params.monthIndex),
@@ -12,9 +14,16 @@ async function submit(req, res) {
     imageData: req.body.imageData,
     imageMimeType: req.body.imageMimeType,
     submittedById: req.user.id,
+    autoConfirm: isAdminSubmitting,
   });
   await recordAudit({ userId: req.user.id, action: 'PAYMENT_PROOF_SUBMIT', entityType: 'ChitPaymentProof', entityId: proof.id, ipAddress: req.ip });
   res.status(201).json({ success: true, data: { id: proof.id, status: proof.status, createdAt: proof.created_at } });
+}
+
+async function markManual(req, res) {
+  await paymentProofService.markPaidManually(req.params.id, Number(req.params.monthIndex), req.body.memberId, req.user.id);
+  await recordAudit({ userId: req.user.id, action: 'PAYMENT_MARK_MANUAL', entityType: 'Chit', entityId: req.params.id, metadata: { monthIndex: req.params.monthIndex, memberId: req.body.memberId }, ipAddress: req.ip });
+  res.json({ success: true, message: 'Marked as paid (manual entry, no screenshot).' });
 }
 
 async function review(req, res) {
@@ -44,4 +53,4 @@ async function getForMonth(req, res) {
   res.json({ success: true, data: proof });
 }
 
-module.exports = { submit, review, listPending, getImage, getForMonth };
+module.exports = { submit, markManual, review, listPending, getImage, getForMonth };

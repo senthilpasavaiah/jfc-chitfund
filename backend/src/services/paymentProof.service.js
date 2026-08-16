@@ -25,7 +25,7 @@ async function getOrCreateMonthData(chitId, monthIndex) {
  * already confirmed - a rejected proof CAN be resubmitted (overwrites in
  * place, resets to pending).
  */
-async function submitProof({ chitId, monthIndex, memberId, imageData, imageMimeType, submittedById }) {
+async function submitProof({ chitId, monthIndex, memberId, imageData, imageMimeType, submittedById, autoConfirm = false }) {
   if (!imageData) throw ApiError.badRequest('No image was provided.');
   const approxBytes = (imageData.length * 3) / 4;
   if (approxBytes > MAX_IMAGE_BYTES) {
@@ -47,40 +47,58 @@ async function submitProof({ chitId, monthIndex, memberId, imageData, imageMimeT
     throw ApiError.conflict('You\'ve already submitted proof for this month and it\'s awaiting admin review. Please wait for confirmation before submitting again.');
   }
 
+  const status = autoConfirm ? 'confirmed' : 'pending';
   let proof;
   if (existing) {
-    // Previously rejected - allow resubmission by overwriting in place.
     const { rows } = await query(
       `UPDATE chit_payment_proofs
-       SET image_data = $1, image_mime_type = $2, status = 'pending', submitted_by_id = $3,
-           reviewed_by_id = NULL, reviewed_at = NULL, rejection_reason = NULL, created_at = now()
-       WHERE id = $4 RETURNING *`,
-      [imageData, imageMimeType, submittedById, existing.id]
+       SET image_data = $1, image_mime_type = $2, status = $3, submitted_by_id = $4,
+           reviewed_by_id = $5, reviewed_at = $6, rejection_reason = NULL, created_at = now()
+       WHERE id = $7 RETURNING *`,
+      [imageData, imageMimeType, status, submittedById, autoConfirm ? submittedById : null, autoConfirm ? new Date() : null, existing.id]
     );
     proof = rows[0];
   } else {
     const { rows } = await query(
-      `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, image_data, image_mime_type, submitted_by_id)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [monthData.id, memberId, imageData, imageMimeType, submittedById]
+      `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, image_data, image_mime_type, submitted_by_id, status, reviewed_by_id, reviewed_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [monthData.id, memberId, imageData, imageMimeType, submittedById, status, autoConfirm ? submittedById : null, autoConfirm ? new Date() : null]
     );
     proof = rows[0];
   }
 
-  // Notify admin - logged only (no live WhatsApp/SMS/Email provider connected
-  // yet, see NOTIFICATIONS.md).
+  if (autoConfirm) {
+    await chitService.payForMonth(chitId, monthIndex, memberId);
+  }
+
   const { rows: memberRows } = await query('SELECT name FROM members WHERE id = $1', [memberId]);
   const memberName = memberRows[0]?.name || 'A member';
   await notificationService.dispatch({
     memberId,
     channel: 'WHATSAPP',
     type: 'PAYMENT_RECEIVED',
-    subject: 'Payment proof submitted',
-    body: `${memberName} submitted a payment screenshot for review.`,
+    subject: autoConfirm ? 'Payment recorded by admin' : 'Payment proof submitted',
+    body: autoConfirm
+      ? `${memberName}'s payment was recorded directly by an admin.`
+      : `${memberName} submitted a payment screenshot for review.`,
     createdById: submittedById,
   });
 
   return proof;
+}
+
+/** Admin marks a member paid without any screenshot at all - a plain manual entry. */
+async function markPaidManually(chitId, monthIndex, memberId, adminUserId) {
+  await chitService.payForMonth(chitId, monthIndex, memberId);
+  const { monthData } = await getOrCreateMonthData(chitId, monthIndex);
+  // Record a lightweight audit row so this shows up the same way a proof
+  // would (status confirmed, but with no image) - keeps the history clean.
+  await query(
+    `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, image_data, image_mime_type, submitted_by_id, status, reviewed_by_id, reviewed_at)
+     VALUES ($1,$2,'','application/x-manual-entry',$3,'confirmed',$3,now())
+     ON CONFLICT (chit_month_data_id, member_id) DO UPDATE SET status = 'confirmed', reviewed_by_id = $3, reviewed_at = now()`,
+    [monthData.id, memberId, adminUserId]
+  );
 }
 
 async function reviewProof(proofId, { decision, reviewerUserId, rejectionReason }) {
@@ -143,4 +161,4 @@ async function getForMonth(chitId, monthIndex, memberId) {
   return rows[0] || null;
 }
 
-module.exports = { submitProof, reviewProof, listPending, getProofImage, getForMonth };
+module.exports = { submitProof, markPaidManually, reviewProof, listPending, getProofImage, getForMonth };

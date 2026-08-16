@@ -95,6 +95,13 @@ router.post(
   paymentProofController.submit
 );
 router.get('/:id/months/:monthIndex/payment-proof', monthParams, validate, paymentProofController.getForMonth);
+router.post(
+  '/:id/months/:monthIndex/payment-manual',
+  authorize('ADMIN', 'MANAGER'),
+  [...monthParams, body('memberId').isUUID()],
+  validate,
+  paymentProofController.markManual
+);
 router.get(
   '/payment-proofs/pending',
   authorize('ADMIN', 'MANAGER'),
