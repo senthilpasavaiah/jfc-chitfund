@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import client from '../api/client';
 import type { ChitDetail, ChitMonthDetail } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -17,6 +17,7 @@ interface PendingProof { id: string; member_name: string; month_index: number; c
 
 export default function ChitDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
@@ -142,7 +143,7 @@ export default function ChitDetailPage() {
     setDeleting(true);
     try {
       await client.delete(`/chits/${id}`);
-      window.location.href = '/chits';
+      navigate('/chits');
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Could not delete chit.');
       setDeleting(false);
@@ -288,18 +289,18 @@ export default function ChitDetailPage() {
         </div>
       )}
 
-      {isAdmin && monthDetail && !monthDetail.isClub && (
+      {isAdmin && monthDetail && (
         <div className="flex gap-2 flex-wrap items-center">
           <button onClick={() => togglePanel('participants')} className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-medium cursor-pointer hover:border-navy-light">
             {panel === 'participants' ? 'Hide Participants' : 'View Participants'}
           </button>
-          {/* Shuffle stays visible even after use - just fades to show it's spent, matching a one-time-use lottery ticket. */}
+          {/* Shuffle stays visible even after use (or for the club's fixed month) - just fades to show it's not usable, rather than disappearing and shifting the layout. */}
           <button
             onClick={handleShuffle}
-            disabled={shuffling || monthDetail.shuffled}
-            title={monthDetail.shuffled ? 'Already used for this month - the result is final' : undefined}
+            disabled={shuffling || monthDetail.shuffled || monthDetail.isClub}
+            title={monthDetail.isClub ? "Month 2 is always Jolly Friends Club - no shuffle needed" : monthDetail.shuffled ? 'Already used for this month - the result is final' : undefined}
             className={`rounded-lg bg-navy text-white px-4 py-2 text-sm font-medium transition-opacity ${
-              monthDetail.shuffled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+              monthDetail.shuffled || monthDetail.isClub ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
             } ${shuffling ? 'opacity-80' : ''}`}
           >
             {shuffling ? (shuffleCycleName || 'Shuffling…') : monthDetail.shuffled ? '🎲 Shuffled ✓' : '🎲 Shuffle'}
@@ -367,13 +368,15 @@ export default function ChitDetailPage() {
                       </div>
                     )}
 
-                    <button
-                      onClick={() => handleAssignDraw(p.memberId)}
-                      disabled={monthDetail.shuffled}
-                      className="text-xs bg-navy/10 text-navy px-2.5 py-1 rounded-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      {p.isDrawer ? '✓ Assigned' : 'Assign as Drawer'}
-                    </button>
+                    {!monthDetail.isClub && (
+                      <button
+                        onClick={() => handleAssignDraw(p.memberId)}
+                        disabled={monthDetail.shuffled}
+                        className="text-xs bg-navy/10 text-navy px-2.5 py-1 rounded-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {p.isDrawer ? '✓ Assigned' : 'Assign as Drawer'}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

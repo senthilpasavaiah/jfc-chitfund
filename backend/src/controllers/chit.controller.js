@@ -45,7 +45,8 @@ async function join(req, res) {
 }
 
 async function leave(req, res) {
-  await chitService.leaveChit(req.params.id, req.user.memberId);
+  const slotIndex = req.body.slotIndex !== undefined ? Number(req.body.slotIndex) : undefined;
+  await chitService.leaveChit(req.params.id, req.user.memberId, slotIndex);
   await recordAudit({ userId: req.user.id, action: 'CHIT_LEAVE', entityType: 'Chit', entityId: req.params.id, ipAddress: req.ip });
   res.json({ success: true, message: 'You have left this chit.' });
 }

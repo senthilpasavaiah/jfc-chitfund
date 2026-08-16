@@ -143,9 +143,17 @@ function CreateChitWizard({ onDone }: { onDone: () => void }) {
     s++;
   }
   const memberName = (id: string) => members.find((m) => m.id === id)?.name || id;
+  const countFor = (id: string) => selected.filter((x) => x === id).length;
 
-  function toggleMember(id: string) {
-    setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : cur.length < capacity ? [...cur, id] : cur));
+  function addSlotFor(id: string) {
+    setSelected((cur) => (cur.length < capacity ? [...cur, id] : cur));
+  }
+  function removeSlotFor(id: string) {
+    setSelected((cur) => {
+      const idx = cur.lastIndexOf(id);
+      if (idx === -1) return cur;
+      return [...cur.slice(0, idx), ...cur.slice(idx + 1)];
+    });
   }
 
   async function handleCreate() {
@@ -226,31 +234,34 @@ function CreateChitWizard({ onDone }: { onDone: () => void }) {
             />
             <div className="grid gap-2.5 max-h-72 overflow-y-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
               {members.map((m) => {
-                const isSelected = selected.includes(m.id);
-                const disabled = !isSelected && selected.length >= capacity;
+                const count = countFor(m.id);
+                const atCapacity = selected.length >= capacity;
                 return (
                   <div key={m.id} className="bg-white border border-line rounded-lg p-2.5 flex flex-col items-center gap-1.5">
                     <div className="w-8 h-8 rounded-full bg-navy text-white flex items-center justify-center text-xs font-bold shrink-0">
                       {m.name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
                     </div>
                     <div className="text-xs font-medium text-center whitespace-nowrap overflow-hidden text-ellipsis max-w-full" title={m.name}>{m.name}</div>
-                    <label className="flex items-center gap-1.5 text-[11px] text-ink-muted cursor-pointer">
-                      <span>Select</span>
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        role="switch"
-                        aria-checked={isSelected}
-                        disabled={disabled}
-                        onClick={() => toggleMember(m.id)}
-                        className={`relative w-8 h-4.5 rounded-full transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${isSelected ? 'bg-success' : 'bg-line'}`}
-                        style={{ height: '18px' }}
+                        onClick={() => removeSlotFor(m.id)}
+                        disabled={count === 0}
+                        className="w-5 h-5 rounded-full bg-line text-ink flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                       >
-                        <span
-                          className="absolute top-0.5 left-0.5 w-3.5 h-3.5 bg-white rounded-full transition-transform"
-                          style={{ transform: isSelected ? 'translateX(14px)' : 'translateX(0)' }}
-                        />
+                        −
                       </button>
-                    </label>
+                      <span className="text-xs font-bold w-4 text-center" title={count > 1 ? `${count} slots` : undefined}>{count}</span>
+                      <button
+                        type="button"
+                        onClick={() => addSlotFor(m.id)}
+                        disabled={atCapacity}
+                        className="w-5 h-5 rounded-full bg-success text-white flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        +
+                      </button>
+                    </div>
+                    {count > 1 && <span className="text-[10px] text-gold-dim font-medium">{count} slots</span>}
                   </div>
                 );
               })}

@@ -185,13 +185,14 @@ async function addMembers(chitId, memberIds) {
     throw ApiError.badRequest(`Only ${remaining} slot${remaining !== 1 ? 's' : ''} left in this chit.`);
   }
 
-  const existingMemberIds = new Set(participants.map((p) => p.member_id));
+  // A member CAN take more than one slot in the same chit (multiple
+  // "shares") - so memberIds may legitimately contain the same id more than
+  // once, and we don't skip repeats here.
   const occupiedSlots = new Set(participants.map((p) => p.slot_number));
   occupiedSlots.add(CLUB_SLOT_INDEX);
 
   return withTransaction(async (client) => {
     for (const memberId of memberIds) {
-      if (existingMemberIds.has(memberId)) continue;
       let freeSlot = null;
       for (let i = 0; i < chit.total_months; i++) {
         if (!occupiedSlots.has(i)) {
@@ -202,8 +203,7 @@ async function addMembers(chitId, memberIds) {
       if (freeSlot === null) break;
       occupiedSlots.add(freeSlot);
       await client.query(
-        `INSERT INTO chit_members (chit_id, member_id, slot_number) VALUES ($1,$2,$3)
-         ON CONFLICT (chit_id, member_id) DO UPDATE SET is_active = TRUE, slot_number = $3`,
+        `INSERT INTO chit_members (chit_id, member_id, slot_number) VALUES ($1,$2,$3)`,
         [chitId, memberId, freeSlot]
       );
     }
@@ -220,7 +220,7 @@ async function joinChit(chitId, memberId) {
   const participants = await getParticipants(chitId);
   const capacity = chitCapacity(chit.total_months);
   if (participants.length >= capacity) throw ApiError.badRequest('This chit is already full.');
-  if (participants.some((p) => p.member_id === memberId)) return;
+  // A member can hold more than one slot - no "already joined" block here.
 
   const occupied = new Set(participants.map((p) => p.slot_number));
   occupied.add(CLUB_SLOT_INDEX);
@@ -233,14 +233,25 @@ async function joinChit(chitId, memberId) {
   }
   if (freeSlot === null) throw ApiError.badRequest('This chit is already full.');
   await query(
-    `INSERT INTO chit_members (chit_id, member_id, slot_number) VALUES ($1,$2,$3)
-     ON CONFLICT (chit_id, member_id) DO UPDATE SET is_active = TRUE, slot_number = $3`,
+    `INSERT INTO chit_members (chit_id, member_id, slot_number) VALUES ($1,$2,$3)`,
     [chitId, memberId, freeSlot]
   );
 }
 
-async function leaveChit(chitId, memberId) {
-  await query(`DELETE FROM chit_members WHERE chit_id = $1 AND member_id = $2`, [chitId, memberId]);
+/** Leaves one specific slot - a member holding multiple slots keeps their others. */
+async function leaveChit(chitId, memberId, slotIndex) {
+  if (slotIndex !== undefined && slotIndex !== null) {
+    await query(`DELETE FROM chit_members WHERE chit_id = $1 AND member_id = $2 AND slot_number = $3`, [chitId, memberId, slotIndex]);
+    return;
+  }
+  // No slot specified - if they only hold one slot, remove that one; if they
+  // hold several, refuse rather than guessing which one to drop.
+  const { rows } = await query(`SELECT slot_number FROM chit_members WHERE chit_id = $1 AND member_id = $2`, [chitId, memberId]);
+  if (rows.length === 0) return;
+  if (rows.length > 1) {
+    throw ApiError.badRequest('You hold more than one slot in this chit - specify which slot to leave.');
+  }
+  await query(`DELETE FROM chit_members WHERE chit_id = $1 AND member_id = $2 AND slot_number = $3`, [chitId, memberId, rows[0].slot_number]);
 }
 
 async function ensureMonthData(chit) {
