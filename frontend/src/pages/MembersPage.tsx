@@ -112,20 +112,19 @@ export default function MembersPage() {
               {canManage && <th className="text-left px-4 py-3">Mobile</th>}
               <th className="text-left px-4 py-3">Aadhaar</th>
               <th className="text-left px-4 py-3">Status</th>
-              <th className="text-left px-4 py-3">Joined</th>
               {canManage && <th className="text-left px-4 py-3">Action</th>}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={canManage ? 6 : 4} className="px-4 py-6 text-center text-ink-muted">
+                <td colSpan={canManage ? 5 : 3} className="px-4 py-6 text-center text-ink-muted">
                   Loading…
                 </td>
               </tr>
             ) : members.length === 0 ? (
               <tr>
-                <td colSpan={canManage ? 6 : 4} className="px-4 py-6 text-center text-ink-muted">
+                <td colSpan={canManage ? 5 : 3} className="px-4 py-6 text-center text-ink-muted">
                   No members found.
                 </td>
               </tr>
@@ -148,7 +147,6 @@ export default function MembersPage() {
                       {m.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-ink-muted">{new Date(m.joinedDate).toLocaleDateString('en-IN')}</td>
                   {canManage && (
                     <td className="px-4 py-3">
                       <button
