@@ -2,20 +2,17 @@ const express = require('express');
 const { query } = require('../config/db');
 const { authenticate } = require('../middleware/auth');
 const fundService = require('../services/fund.service');
+const chitService = require('../services/chit.service');
 
 const router = express.Router();
 router.use(authenticate);
 
 router.get('/summary', async (req, res) => {
-  const [members, chits, collections, pending, expenses] = await Promise.all([
+  const [members, classicPaymentsThisMonth, pending, expensesThisMonth] = await Promise.all([
     query(`SELECT
              COUNT(*) FILTER (WHERE status = 'ACTIVE')::int AS active,
              COUNT(*)::int AS total
            FROM members`),
-    query(`SELECT
-             COUNT(*) FILTER (WHERE status = 'ACTIVE')::int AS active,
-             COUNT(*) FILTER (WHERE status = 'CLOSED')::int AS closed
-           FROM chits`),
     query(`SELECT COALESCE(SUM(amount), 0)::float AS total
            FROM payments
            WHERE date_trunc('month', paid_at) = date_trunc('month', now())`),
@@ -27,10 +24,28 @@ router.get('/summary', async (req, res) => {
            WHERE date_trunc('month', spent_at) = date_trunc('month', now())`),
   ]);
 
-  const totalCollectionResult = await query(`SELECT COALESCE(SUM(amount), 0)::float AS total FROM payments`);
-  const totalCollection = totalCollectionResult.rows[0].total;
+  // Chit status is computed from dates (upcoming/ongoing/completed), not a
+  // stored column - the old ACTIVE/CLOSED column is legacy and never updates.
+  const allChits = await chitService.list({});
+  const activeChits = allChits.filter((c) => c.status === 'ongoing').length;
+  const closedChits = allChits.filter((c) => c.status === 'completed').length;
+
+  const classicTotalResult = await query(`SELECT COALESCE(SUM(amount), 0)::float AS total FROM payments`);
   const totalExpenseResult = await query(`SELECT COALESCE(SUM(amount), 0)::float AS total FROM expenses`);
   const totalExpense = totalExpenseResult.rows[0].total;
+
+  // Real chit-fund contributions (confirmed via payment proof / manual entry)
+  // - the classic `payments` table only covers the older auction-style
+  // chits, so combine both so "collected" reflects everything.
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const [chitCollectionsAllTime, chitCollectionsThisMonth] = await Promise.all([
+    chitService.getConfirmedChitCollections(),
+    chitService.getConfirmedChitCollections({ from: monthStart }),
+  ]);
+
+  const monthlyCollection = classicPaymentsThisMonth.rows[0].total + chitCollectionsThisMonth.total;
+  const totalCollection = classicTotalResult.rows[0].total + chitCollectionsAllTime.total;
 
   const fundsSummary = await fundService.summary();
 
@@ -39,17 +54,14 @@ router.get('/summary', async (req, res) => {
     data: {
       totalMembers: members.rows[0].total,
       activeMembers: members.rows[0].active,
-      activeChits: chits.rows[0].active,
-      closedChits: chits.rows[0].closed,
-      monthlyCollection: collections.rows[0].total,
-      monthlyExpenses: expenses.rows[0].total,
+      activeChits,
+      closedChits,
+      monthlyCollection,
+      monthlyExpenses: expensesThisMonth.rows[0].total,
       pendingPayments: { total: pending.rows[0].total, count: pending.rows[0].count },
       totalCollection,
       totalExpenses: totalExpense,
       profit: totalCollection - totalExpense,
-      // Funds figures - imported from JFC_Santha_Settlement_2026.xlsx, plus
-      // whatever is recorded going forward. See fund.service.js for the
-      // exact aggregation - nothing here is hardcoded.
       incomeViaChit: fundsSummary.incomeViaChit,
       incomeViaDonation: fundsSummary.incomeViaDonation,
       incomeViaSantha: fundsSummary.incomeViaSantha,

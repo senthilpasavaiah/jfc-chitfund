@@ -23,6 +23,12 @@ async function deleteChit(req, res) {
   res.json({ success: true, message: 'Chit deleted' });
 }
 
+async function updateRefNumber(req, res) {
+  const chit = await chitService.updateRefNumber(req.params.id, req.body.refNumber);
+  await recordAudit({ userId: req.user.id, action: 'CHIT_REF_UPDATE', entityType: 'Chit', entityId: req.params.id, metadata: { refNumber: req.body.refNumber }, ipAddress: req.ip });
+  res.json({ success: true, data: chit });
+}
+
 async function addMembers(req, res) {
   await chitService.addMembers(req.params.id, req.body.memberIds);
   await recordAudit({ userId: req.user.id, action: 'CHIT_MEMBERS_ADD', entityType: 'Chit', entityId: req.params.id, metadata: { memberIds: req.body.memberIds }, ipAddress: req.ip });
@@ -69,7 +75,7 @@ async function payForMonth(req, res) {
 }
 
 async function assignDraw(req, res) {
-  await chitService.assignDraw(req.params.id, Number(req.params.monthIndex), req.body.memberId);
+  await chitService.assignDraw(req.params.id, Number(req.params.monthIndex), req.body.memberId, req.user.id);
   await recordAudit({ userId: req.user.id, action: 'CHIT_DRAW_ASSIGN', entityType: 'Chit', entityId: req.params.id, metadata: { monthIndex: req.params.monthIndex, memberId: req.body.memberId }, ipAddress: req.ip });
   res.json({ success: true });
 }
@@ -85,7 +91,7 @@ async function cancelRequest(req, res) {
 }
 
 async function performShuffle(req, res) {
-  const result = await chitService.performShuffle(req.params.id, Number(req.params.monthIndex), req.body.memberIds);
+  const result = await chitService.performShuffle(req.params.id, Number(req.params.monthIndex), req.body.memberIds, req.user.id);
   await recordAudit({ userId: req.user.id, action: 'CHIT_SHUFFLE', entityType: 'Chit', entityId: req.params.id, metadata: { monthIndex: req.params.monthIndex, ...result }, ipAddress: req.ip });
   res.json({ success: true, data: result });
 }
@@ -96,6 +102,7 @@ async function getLedger(req, res) {
 }
 
 module.exports = {
+  updateRefNumber,
   create, list, getById, deleteChit, addMembers, removeMember, join, leave,
   getMonthDetail, togglePaid, payForMonth, assignDraw, submitRequest, cancelRequest,
   performShuffle, getLedger,

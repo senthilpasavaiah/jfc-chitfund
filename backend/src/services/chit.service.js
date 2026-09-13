@@ -1,5 +1,6 @@
 const { query, withTransaction } = require('../config/db');
 const ApiError = require('../utils/ApiError');
+const notificationService = require('./notification.service');
 
 const CLUB_SLOT_INDEX = 1; // "Member 2" - always Jolly Friends Club
 const CLUB_NAME = 'Jolly Friends Club';
@@ -89,11 +90,32 @@ function chitCapacity(totalMonths) {
   return totalMonths - 1;
 }
 
+// 7 historical (pre-app) chit rounds already exist as "Chit-1".."Chit-7" in
+// chit_profit_history - live chits continue that numbering from 8 onward,
+// never restart at 1.
+const HISTORICAL_CHIT_COUNT = 7;
+
 async function generateChitRef() {
   const year = new Date().getFullYear();
-  const { rows } = await query(`SELECT COUNT(*)::int AS count FROM chits WHERE ref_number LIKE $1`, [`CHIT-${year}-%`]);
-  const seq = String(rows[0].count + 1).padStart(3, '0');
+  const { rows } = await query(`SELECT ref_number FROM chits WHERE ref_number LIKE $1`, [`CHIT-${year}-%`]);
+  let maxSeq = HISTORICAL_CHIT_COUNT;
+  for (const r of rows) {
+    const match = r.ref_number.match(/CHIT-\d{4}-(\d+)$/);
+    if (match) {
+      const n = parseInt(match[1], 10);
+      if (n > maxSeq) maxSeq = n;
+    }
+  }
+  const seq = String(maxSeq + 1).padStart(3, '0');
   return `CHIT-${year}-${seq}`;
+}
+
+async function updateRefNumber(chitId, newRefNumber) {
+  const existing = await query('SELECT id FROM chits WHERE ref_number = $1 AND id != $2', [newRefNumber, chitId]);
+  if (existing.rows.length) throw ApiError.conflict('That reference number is already in use by another chit.');
+  const { rows } = await query('UPDATE chits SET ref_number = $1 WHERE id = $2 RETURNING *', [newRefNumber, chitId]);
+  if (!rows[0]) throw ApiError.notFound('Chit not found');
+  return serializeChit(rows[0]);
 }
 
 function serializeChit(row) {
@@ -373,7 +395,7 @@ async function payForMonth(chitId, monthIndex, memberId) {
   );
 }
 
-async function assignDraw(chitId, monthIndex, memberId) {
+async function assignDraw(chitId, monthIndex, memberId, actingUserId) {
   if (monthIndex === CLUB_SLOT_INDEX) {
     throw ApiError.badRequest("Month 2 is always reserved for Jolly Friends Club - it can't be reassigned.");
   }
@@ -384,6 +406,19 @@ async function assignDraw(chitId, monthIndex, memberId) {
     throw ApiError.badRequest("This month was already decided by shuffle - the result is final and can't be changed.");
   }
   await query(`UPDATE chit_month_data SET drawn_by_member_id = $1 WHERE id = $2`, [memberId || null, md.id]);
+
+  if (memberId) {
+    const winnerName = await getMemberName(memberId);
+    const monthLabel = chitMonthLabel(chit.start_date, monthIndex);
+    await notificationService.dispatch({
+      memberId,
+      channel: 'WHATSAPP',
+      type: 'AUCTION_WON',
+      subject: 'You were assigned this month\'s draw',
+      body: `${winnerName} was assigned as the drawer for ${chit.ref_number} - ${monthLabel}.`,
+      createdById: actingUserId,
+    });
+  }
 }
 
 async function submitRequest(chitId, monthIndex, memberId, type) {
@@ -405,7 +440,7 @@ async function cancelRequest(chitId, monthIndex, memberId) {
   await query(`DELETE FROM chit_month_requests WHERE chit_month_data_id = $1 AND member_id = $2`, [md.id, memberId]);
 }
 
-async function performShuffle(chitId, monthIndex, memberIds) {
+async function performShuffle(chitId, monthIndex, memberIds, actingUserId) {
   if (monthIndex === CLUB_SLOT_INDEX) {
     throw ApiError.badRequest("Month 2 is reserved for Jolly Friends Club - shuffling isn't needed for it.");
   }
@@ -426,6 +461,17 @@ async function performShuffle(chitId, monthIndex, memberIds) {
   const winnerId = memberIds[Math.floor(Math.random() * memberIds.length)];
   await query(`UPDATE chit_month_data SET drawn_by_member_id = $1, shuffled = TRUE WHERE id = $2`, [winnerId, md.id]);
   const winnerName = await getMemberName(winnerId);
+
+  const monthLabel = chitMonthLabel(chit.start_date, monthIndex);
+  await notificationService.dispatch({
+    memberId: winnerId,
+    channel: 'WHATSAPP',
+    type: 'AUCTION_WON',
+    subject: 'You won this month\'s shuffle!',
+    body: `${winnerName} was picked by shuffle for ${chit.ref_number} - ${monthLabel}.`,
+    createdById: actingUserId,
+  });
+
   return { winnerId, winnerName };
 }
 
@@ -501,7 +547,73 @@ async function getDetail(chitId, viewer) {
   };
 }
 
+
+/**
+ * Confirmed chit-fund collections across all live chits - shared by the
+ * Dashboard and Reports pages so "how much has actually been collected"
+ * includes real chit payments, not just the legacy classic-chit `payments`
+ * table. Each paid chit_month_payments row's amount is derived from the
+ * same declining-schedule formula the Calculator/chit engine itself uses.
+ */
+async function getConfirmedChitCollections({ from, to } = {}) {
+  const { rows: paidRows } = await query(
+    `SELECT cmp.member_id, cmd.month_index, cmd.chit_id, c.ref_number, c.value_lakh, c.total_months, c.rate_schedule, c.start_date,
+            m.name AS member_name, m.mobile_number
+     FROM chit_month_payments cmp
+     JOIN chit_month_data cmd ON cmd.id = cmp.chit_month_data_id
+     JOIN chits c ON c.id = cmd.chit_id
+     JOIN members m ON m.id = cmp.member_id
+     WHERE cmp.paid = TRUE`
+  );
+
+  const rangeStart = from ? new Date(from) : null;
+  const rangeEnd = to ? new Date(to) : null;
+
+  let total = 0;
+  let count = 0;
+  const byMonth = new Map();
+  const byChit = new Map();
+  const byMember = new Map();
+
+  for (const row of paidRows) {
+    const chit = { value_lakh: row.value_lakh, total_months: row.total_months, rate_schedule: row.rate_schedule };
+    const amount = chitMonthlyPaymentForRound(chit, row.month_index);
+    const paidMonthDate = chitMonthDate(row.start_date, row.month_index);
+
+    if (rangeStart && paidMonthDate < rangeStart) continue;
+    if (rangeEnd && paidMonthDate > rangeEnd) continue;
+
+    total += amount;
+    count += 1;
+
+    const monthKey = paidMonthDate ? `${paidMonthDate.getFullYear()}-${String(paidMonthDate.getMonth() + 1).padStart(2, '0')}` : 'unknown';
+    byMonth.set(monthKey, (byMonth.get(monthKey) || 0) + amount);
+
+    const chitEntry = byChit.get(row.chit_id) || { refNumber: row.ref_number, collected: 0, paymentCount: 0 };
+    chitEntry.collected += amount;
+    chitEntry.paymentCount += 1;
+    byChit.set(row.chit_id, chitEntry);
+
+    const memberEntry = byMember.get(row.member_id) || { name: row.member_name, mobileNumber: row.mobile_number, totalPaid: 0, paymentCount: 0 };
+    memberEntry.totalPaid += amount;
+    memberEntry.paymentCount += 1;
+    byMember.set(row.member_id, memberEntry);
+  }
+
+  return {
+    total,
+    count,
+    byMonth: Array.from(byMonth.entries()).map(([month, collected]) => ({ month, collected })),
+    byChit: Array.from(byChit.entries()).map(([id, v]) => ({ id, ...v })),
+    byMember: Array.from(byMember.entries()).map(([id, v]) => ({ id, ...v })),
+  };
+}
+
 module.exports = {
+  chitMonthlyPaymentForRound,
+  getConfirmedChitCollections,
+  updateRefNumber,
+  syncAccounting,
   CLUB_SLOT_INDEX,
   CLUB_NAME,
   create,

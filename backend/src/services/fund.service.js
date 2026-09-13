@@ -1,6 +1,20 @@
 const { query } = require('../config/db');
 const ApiError = require('../utils/ApiError');
 
+/**
+ * Ensures every live chit's auto-ledger is up to date before we sum it -
+ * cheap for the handful of chits JFC actually runs, and guarantees the
+ * dashboard reflects reality even if nobody's opened a chit's Income &
+ * Expenses panel recently (which is what normally triggers the sync).
+ */
+async function syncAllChitLedgers() {
+  const chitService = require('./chit.service');
+  const { rows } = await query(`SELECT id FROM chits`);
+  for (const { id } of rows) {
+    await chitService.syncAccounting(id);
+  }
+}
+
 async function listDonations() {
   const { rows } = await query(
     `SELECT d.*, m.status AS member_status FROM donations d
@@ -97,15 +111,20 @@ async function addSettlementYear({ fiscalYearLabel, santhaDonation, chitProfit, 
 
 /** Powers the dashboard's headline cards - all figures are live SUMs, never hardcoded. */
 async function summary() {
+  await syncAllChitLedgers();
+
   const donationTotal = await query(`SELECT COALESCE(SUM(amount),0)::float AS total FROM donations`);
   const santhaTotal = await query(`SELECT COALESCE(SUM(amount),0)::float AS total FROM santha_entries`);
-  const chitProfitTotal = await query(`SELECT COALESCE(SUM(profit_amount),0)::float AS total FROM chit_profit_history`);
+  const chitProfitHistoryTotal = await query(`SELECT COALESCE(SUM(profit_amount),0)::float AS total FROM chit_profit_history`);
+  const liveChitCommission = await query(
+    `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger WHERE type = 'income' AND category = 'Commission'`
+  );
   const settlementTotals = await query(
     `SELECT COALESCE(SUM(principal),0)::float AS principal, COALESCE(SUM(profit_6pct),0)::float AS profit
      FROM settlement_summary`
   );
 
-  const incomeViaChit = chitProfitTotal.rows[0].total;
+  const incomeViaChit = chitProfitHistoryTotal.rows[0].total + liveChitCommission.rows[0].total;
   const incomeViaDonation = donationTotal.rows[0].total;
   const incomeViaSantha = santhaTotal.rows[0].total;
   const currentlyInHand = settlementTotals.rows[0].principal;

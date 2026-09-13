@@ -27,6 +27,13 @@ router.post(
   chitController.create
 );
 router.delete('/:id', authorize('ADMIN'), idParam, validate, chitController.deleteChit);
+router.patch(
+  '/:id/ref-number',
+  authorize('ADMIN'),
+  [...idParam, body('refNumber').trim().notEmpty().withMessage('Reference number is required')],
+  validate,
+  chitController.updateRefNumber
+);
 
 router.post(
   '/:id/members',

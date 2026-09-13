@@ -30,6 +30,7 @@ export default function ChitsPage() {
   const { user } = useAuth();
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
   const [tab, setTab] = useState<'ongoing' | 'upcoming' | 'completed'>('ongoing');
+  const [sortBy, setSortBy] = useState<'refNumber' | 'valueLakh' | 'startDate'>('refNumber');
   const [chits, setChits] = useState<Chit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showWizard, setShowWizard] = useState(false);
@@ -46,19 +47,36 @@ export default function ChitsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  const sortedChits = [...chits].sort((a, b) => {
+    if (sortBy === 'valueLakh') return b.valueLakh - a.valueLakh;
+    if (sortBy === 'startDate') return new Date(b.startDate || 0).getTime() - new Date(a.startDate || 0).getTime();
+    return a.refNumber.localeCompare(b.refNumber);
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`px-4 py-2 transition-colors cursor-pointer ${tab === t.key ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`px-4 py-2 transition-colors cursor-pointer ${tab === t.key ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            className="rounded-lg border border-line px-3 py-2 text-sm text-ink-muted cursor-pointer"
+          >
+            <option value="refNumber">Sort: Reference No.</option>
+            <option value="valueLakh">Sort: Chit Value</option>
+            <option value="startDate">Sort: Start Date</option>
+          </select>
         </div>
         {canManage && (
           <button
@@ -82,10 +100,10 @@ export default function ChitsPage() {
       <div className="grid gap-4">
         {loading ? (
           <p className="text-ink-muted">Loading…</p>
-        ) : chits.length === 0 ? (
+        ) : sortedChits.length === 0 ? (
           <p className="text-ink-muted">No {tab} chits.</p>
         ) : (
-          chits.map((chit) => (
+          sortedChits.map((chit) => (
             <Link
               key={chit.id}
               to={`/chits/${chit.id}`}

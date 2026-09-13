@@ -150,6 +150,18 @@ export default function ChitDetailPage() {
     }
   }
 
+  async function handleEditRefNumber() {
+    if (!chit) return;
+    const newRef = window.prompt('New reference number:', chit.refNumber);
+    if (!newRef || newRef === chit.refNumber) return;
+    try {
+      await client.patch(`/chits/${id}/ref-number`, { refNumber: newRef });
+      loadChit();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Could not update reference number.');
+    }
+  }
+
   async function handleAssignDraw(memberId: string) {
     setError(null);
     try {
@@ -243,7 +255,14 @@ export default function ChitDetailPage() {
     <div className="space-y-5">
       <div className="ledger-card p-5">
         <div className="text-xs uppercase tracking-wide text-ink-muted">Jolly Friends Club</div>
-        <h2 className="text-xl font-bold mt-0.5">{chit.refNumber} — {chit.valueLakh} Lakh / {chit.totalMonths} Months</h2>
+        <h2 className="text-xl font-bold mt-0.5">
+          {chit.refNumber} — {chit.valueLakh} Lakh / {chit.totalMonths} Months
+          {isAdmin && (
+            <button onClick={handleEditRefNumber} className="ml-2 text-xs font-normal text-navy underline cursor-pointer align-middle">
+              edit ref no.
+            </button>
+          )}
+        </h2>
         <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-ink-muted mt-2">
           <span>Start Date: <strong className="text-ink font-tabular">{chit.startDate ? new Date(chit.startDate).toLocaleDateString('en-IN') : '—'}</strong></span>
           <span>End Date: <strong className="text-ink font-tabular">{chit.endDate ? new Date(chit.endDate).toLocaleDateString('en-IN') : '—'}</strong></span>
@@ -260,7 +279,7 @@ export default function ChitDetailPage() {
           <button
             key={m.monthIndex}
             onClick={() => setSelectedMonth(m.monthIndex)}
-            className={`shrink-0 w-28 text-left rounded-lg border p-3 cursor-pointer transition-colors ${
+            className={`shrink-0 w-28 h-24 flex flex-col text-left rounded-lg border p-3 cursor-pointer transition-colors ${
               selectedMonth === m.monthIndex ? 'border-gold border-2 bg-white' : 'border-line bg-white hover:border-navy-light'
             }`}
           >
@@ -270,7 +289,9 @@ export default function ChitDetailPage() {
               <div className="h-1 bg-success rounded-full" style={{ width: `${m.capacity ? (m.paidCount / m.capacity) * 100 : 0}%` }} />
             </div>
             <div className="text-[11px] text-ink-muted">{m.paidCount}/{m.capacity} paid</div>
-            {m.monthIndex === 1 && <div className="text-[10px] bg-gold/20 text-gold-dim px-1.5 py-0.5 rounded mt-1 inline-block">🏆 Jolly Fri...</div>}
+            <div className="text-[10px] px-1.5 py-0.5 rounded mt-1 inline-block w-fit" style={{ visibility: m.monthIndex === 1 ? 'visible' : 'hidden' }}>
+              <span className="bg-gold/20 text-gold-dim px-1.5 py-0.5 rounded">🏆 Jolly Fri...</span>
+            </div>
           </button>
         ))}
       </div>
@@ -291,7 +312,7 @@ export default function ChitDetailPage() {
 
       {isAdmin && monthDetail && (
         <div className="flex gap-2 flex-wrap items-center">
-          <button onClick={() => togglePanel('participants')} className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-medium cursor-pointer hover:border-navy-light">
+          <button onClick={() => togglePanel('participants')} className="w-44 text-center rounded-lg border border-line bg-white px-4 py-2 text-sm font-medium cursor-pointer hover:border-navy-light">
             {panel === 'participants' ? 'Hide Participants' : 'View Participants'}
           </button>
           {/* Shuffle stays visible even after use (or for the club's fixed month) - just fades to show it's not usable, rather than disappearing and shifting the layout. */}
@@ -305,7 +326,7 @@ export default function ChitDetailPage() {
           >
             {shuffling ? (shuffleCycleName || 'Shuffling…') : monthDetail.shuffled ? '🎲 Shuffled ✓' : '🎲 Shuffle'}
           </button>
-          <button onClick={() => togglePanel('ledger')} className="rounded-lg border border-line bg-white px-4 py-2 text-sm font-medium cursor-pointer hover:border-navy-light">
+          <button onClick={() => togglePanel('ledger')} className="w-44 text-center rounded-lg border border-line bg-white px-4 py-2 text-sm font-medium cursor-pointer hover:border-navy-light">
             {panel === 'ledger' ? 'Hide Income & Expenses' : 'Income & Expenses'}
           </button>
         </div>
