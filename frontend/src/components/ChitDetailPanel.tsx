@@ -475,9 +475,23 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
               )}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {monthDetail.participants.map((p) => (
-                  <div key={p.memberId} className="border border-line rounded-lg p-3 flex flex-col items-center gap-1.5 text-center">
-                    <div className="w-10 h-10 rounded-full bg-navy text-white flex items-center justify-center text-sm font-bold">{initials(p.name)}</div>
-                    <div className="text-sm font-medium">{p.name}</div>
+                  <div
+                    key={p.memberId}
+                    className={`rounded-lg p-3 flex flex-col items-center gap-1.5 text-center transition-colors ${
+                      p.isDrawer
+                        ? 'border-2 border-gold bg-gold/10 shadow-sm'
+                        : 'border border-line'
+                    }`}
+                  >
+                    {p.isDrawer && (
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gold-dim bg-gold/20 px-2 py-0.5 rounded-full">
+                        🏆 Drawer
+                      </span>
+                    )}
+                    <div className={`w-10 h-10 rounded-full text-white flex items-center justify-center text-sm font-bold ${p.isDrawer ? 'bg-gold-dim' : 'bg-navy'}`}>
+                      {initials(p.name)}
+                    </div>
+                    <div className={`text-sm ${p.isDrawer ? 'font-bold text-gold-dim' : 'font-medium'}`}>{p.name}</div>
                     <label className="flex items-center gap-1.5 text-xs text-ink-muted">
                       <span>Paid</span>
                       <button
@@ -583,7 +597,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
             <span className="font-tabular font-bold">{formatINR(monthDetail.monthlyPayment)}</span>
           </div>
           {monthDetail.drawnByName && (
-            <p className="text-sm">Drawn by: <strong>{monthDetail.drawnByName}</strong></p>
+            <p className="text-sm">Drawn by: <strong className="text-gold-dim bg-gold/15 px-2 py-0.5 rounded-md">🏆 {monthDetail.drawnByName}</strong></p>
           )}
 
           {myProofStatus?.status === 'confirmed' && (
