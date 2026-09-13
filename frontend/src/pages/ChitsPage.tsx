@@ -103,27 +103,54 @@ export default function ChitsPage() {
         ) : sortedChits.length === 0 ? (
           <p className="text-ink-muted">No {tab} chits.</p>
         ) : (
-          sortedChits.map((chit) => (
-            <Link
-              key={chit.id}
-              to={`/chits/${chit.id}`}
-              className="ledger-card p-5 flex items-center justify-between hover:border-gold transition-colors"
-            >
-              <div>
-                <div className="font-medium">{chit.refNumber}</div>
-                <div className="text-xs text-ink-muted mt-0.5">
-                  {chit.valueLakh} Lakh · {chit.totalMonths} Months · {chit.rateSchedule === 'jfc' ? 'JFC Rate' : 'Standard Rate'}
+          sortedChits.map((chit) => {
+            // canAccess is only sent for logged-in viewers (always true for
+            // Admin/Manager). Default to accessible when it's absent so we
+            // never accidentally lock people out before the field exists.
+            const clickable = canManage || chit.canAccess !== false;
+            const cardContent = (
+              <>
+                <div>
+                  <div className="font-medium">{chit.refNumber}</div>
+                  <div className="text-xs text-ink-muted mt-0.5">
+                    {chit.valueLakh} Lakh · {chit.totalMonths} Months · {chit.rateSchedule === 'jfc' ? 'JFC Rate' : 'Standard Rate'}
+                  </div>
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="font-tabular text-lg">{formatINR(chit.valueLakh * 100000)}</div>
-                <div className="text-xs text-ink-muted">
-                  {chit.status === 'ongoing' ? `Month ${chit.monthsElapsed + 1} of ${chit.totalMonths}` : chit.status === 'upcoming' ? `Starts ${chit.startDate ? new Date(chit.startDate).toLocaleDateString('en-IN') : ''}` : 'Completed'}
+                <div className="text-right">
+                  <div className="font-tabular text-lg">{formatINR(chit.valueLakh * 100000)}</div>
+                  <div className="text-xs text-ink-muted">
+                    {chit.status === 'ongoing' ? `Month ${chit.monthsElapsed + 1} of ${chit.totalMonths}` : chit.status === 'upcoming' ? `Starts ${chit.startDate ? new Date(chit.startDate).toLocaleDateString('en-IN') : ''}` : 'Completed'}
+                  </div>
                 </div>
-              </div>
-              <span className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${STATUS_STYLES[chit.status]}`}>{chit.status}</span>
-            </Link>
-          ))
+                <span className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${STATUS_STYLES[chit.status]}`}>{chit.status}</span>
+              </>
+            );
+
+            if (!clickable) {
+              // Not a participant in this chit - shown in the list, but not
+              // openable. No hover affordance, no navigation.
+              return (
+                <div
+                  key={chit.id}
+                  className="ledger-card p-5 flex items-center justify-between opacity-60 cursor-default select-none"
+                  aria-disabled="true"
+                  title="You are not a participant in this chit."
+                >
+                  {cardContent}
+                </div>
+              );
+            }
+
+            return (
+              <Link
+                key={chit.id}
+                to={`/chits/${chit.id}`}
+                className="ledger-card p-5 flex items-center justify-between hover:border-gold transition-colors"
+              >
+                {cardContent}
+              </Link>
+            );
+          })
         )}
       </div>
     </div>

@@ -8,7 +8,7 @@ async function create(req, res) {
 }
 
 async function list(req, res) {
-  const chits = await chitService.list(req.query);
+  const chits = await chitService.list(req.query, req.user);
   res.json({ success: true, data: chits });
 }
 

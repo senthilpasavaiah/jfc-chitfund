@@ -157,9 +157,47 @@ async function create({ valueLakh, totalMonths, rateSchedule, startDate }) {
   return serializeChit(rows[0]);
 }
 
-async function list({ tab }) {
+/**
+ * Returns whether `memberId` currently holds an active slot in `chitId`.
+ * Admins/Managers should never be routed through this - they bypass the
+ * participant check entirely at the call site.
+ */
+async function isChitParticipant(chitId, memberId) {
+  if (!memberId) return false;
+  const { rows } = await query(
+    `SELECT 1 FROM chit_members WHERE chit_id = $1 AND member_id = $2 AND is_active = TRUE LIMIT 1`,
+    [chitId, memberId]
+  );
+  return rows.length > 0;
+}
+
+/**
+ * `viewer` (req.user) is optional so internal/background callers can still
+ * get the plain list. When provided, each chit is annotated with whether
+ * this viewer participates in it and whether they're allowed to open it -
+ * the list itself (which chits show up) is unchanged for everyone, only the
+ * per-card `canAccess` flag differs.
+ */
+async function list({ tab }, viewer) {
   const { rows } = await query(`SELECT * FROM chits ORDER BY created_at DESC`);
-  const serialized = rows.map(serializeChit);
+
+  let participantChitIds = null;
+  const isPrivileged = viewer && (viewer.role === 'ADMIN' || viewer.role === 'MANAGER');
+  if (viewer && !isPrivileged) {
+    const { rows: memberRows } = await query(
+      `SELECT DISTINCT chit_id FROM chit_members WHERE member_id = $1 AND is_active = TRUE`,
+      [viewer.memberId]
+    );
+    participantChitIds = new Set(memberRows.map((r) => r.chit_id));
+  }
+
+  const serialized = rows.map((row) => {
+    const chit = serializeChit(row);
+    if (!viewer) return chit;
+    const isParticipant = isPrivileged ? false : !!participantChitIds?.has(row.id);
+    const canAccess = isPrivileged || isParticipant;
+    return { ...chit, isParticipant, canAccess };
+  });
   if (!tab) return serialized;
   return serialized.filter((c) => c.status === tab);
 }
@@ -621,6 +659,7 @@ module.exports = {
   getById,
   deleteChit,
   getDetail,
+  isChitParticipant,
   addMembers,
   removeMember,
   joinChit,

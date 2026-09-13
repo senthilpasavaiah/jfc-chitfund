@@ -3,6 +3,7 @@ const { body, param } = require('express-validator');
 const paymentProofController = require('../controllers/paymentProof.controller');
 const chitController = require('../controllers/chit.controller');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requireChitAccess } = require('../middleware/chitAccess');
 const validate = require('../middleware/validate');
 
 const router = express.Router();
@@ -12,7 +13,7 @@ const idParam = [param('id').isUUID()];
 const monthParams = [param('id').isUUID(), param('monthIndex').isInt({ min: 0 })];
 
 router.get('/', chitController.list);
-router.get('/:id', idParam, validate, chitController.getById);
+router.get('/:id', idParam, validate, requireChitAccess, chitController.getById);
 
 router.post(
   '/',
@@ -53,7 +54,7 @@ router.delete(
 router.post('/:id/join', idParam, validate, chitController.join);
 router.post('/:id/leave', idParam, validate, chitController.leave);
 
-router.get('/:id/months/:monthIndex', monthParams, validate, chitController.getMonthDetail);
+router.get('/:id/months/:monthIndex', monthParams, validate, requireChitAccess, chitController.getMonthDetail);
 
 router.patch(
   '/:id/months/:monthIndex/payment',
@@ -87,7 +88,7 @@ router.post(
 );
 router.delete('/:id/months/:monthIndex/request', monthParams, validate, chitController.cancelRequest);
 
-router.get('/:id/ledger', idParam, validate, chitController.getLedger);
+router.get('/:id/ledger', idParam, validate, requireChitAccess, chitController.getLedger);
 
 // Payment proof workflow
 router.post(
@@ -101,7 +102,7 @@ router.post(
   validate,
   paymentProofController.submit
 );
-router.get('/:id/months/:monthIndex/payment-proof', monthParams, validate, paymentProofController.getForMonth);
+router.get('/:id/months/:monthIndex/payment-proof', monthParams, validate, requireChitAccess, paymentProofController.getForMonth);
 router.post(
   '/:id/months/:monthIndex/payment-manual',
   authorize('ADMIN', 'MANAGER'),

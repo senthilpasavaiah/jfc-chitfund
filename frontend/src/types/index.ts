@@ -42,6 +42,10 @@ export interface Chit {
   monthsElapsed: number;
   monthsRemaining: number;
   createdAt: string;
+  /** Present when the list was loaded for a logged-in viewer: whether they hold a slot in this chit. */
+  isParticipant?: boolean;
+  /** Present when the list was loaded for a logged-in viewer: whether they're allowed to open this chit (Admin/Manager, or a participant). */
+  canAccess?: boolean;
 }
 
 export interface ChitParticipantSlot {

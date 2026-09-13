@@ -35,12 +35,24 @@ export default function ChitDetailPage() {
   const [markingMemberId, setMarkingMemberId] = useState<string | null>(null);
   const [shuffleCycleName, setShuffleCycleName] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   async function loadChit() {
-    const res = await client.get(`/chits/${id}`);
-    setChit(res.data.data);
-    const elapsed = res.data.data.monthsElapsed;
-    setSelectedMonth((cur) => (cur === 0 ? Math.min(elapsed, res.data.data.totalMonths - 1) : cur));
+    try {
+      const res = await client.get(`/chits/${id}`);
+      setChit(res.data.data);
+      const elapsed = res.data.data.monthsElapsed;
+      setSelectedMonth((cur) => (cur === 0 ? Math.min(elapsed, res.data.data.totalMonths - 1) : cur));
+    } catch (err: any) {
+      // Not a participant (or the chit doesn't exist) - the backend already
+      // enforces this; here we just stop rendering internal details instead
+      // of getting stuck on "Loading…". Covers refresh and direct-URL entry.
+      if (err?.response?.status === 403 || err?.response?.status === 404) {
+        setAccessDenied(true);
+      } else {
+        setError(err?.response?.data?.message || 'Could not load this chit.');
+      }
+    }
   }
 
   async function loadMonth(monthIndex: number) {
@@ -249,7 +261,21 @@ export default function ChitDetailPage() {
     }
   }
 
-  if (!chit) return <p className="text-ink-muted">Loading…</p>;
+  if (accessDenied) {
+    return (
+      <div className="ledger-card p-6 text-center space-y-2">
+        <p className="text-ink font-medium">You don't have access to this chit.</p>
+        <p className="text-sm text-ink-muted">You can only view chits you're a participant in.</p>
+        <button onClick={() => navigate('/chits')} className="mt-2 rounded-lg bg-navy text-white px-4 py-2 text-sm font-medium cursor-pointer">
+          Back to Chits
+        </button>
+      </div>
+    );
+  }
+
+  if (!chit) {
+    return error ? <p className="text-sm text-danger">{error}</p> : <p className="text-ink-muted">Loading…</p>;
+  }
 
   return (
     <div className="space-y-5">
