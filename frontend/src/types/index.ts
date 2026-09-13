@@ -91,6 +91,8 @@ export interface ChitMonthDetail {
   monthIndex: number;
   label: string;
   isClub: boolean;
+  /** True only for the single month that's currently active/actionable - past and future months are locked for Assign/Shuffle. */
+  isCurrentMonth: boolean;
   drawnByName: string | null;
   drawnByMemberId: string | null;
   shuffled: boolean;

@@ -320,6 +320,35 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     return error ? <p className="text-sm text-danger">{error}</p> : <p className="text-ink-muted">Loading…</p>;
   }
 
+  // Derived lock state for Assign/Shuffle, mirroring the rules enforced
+  // server-side in assignDraw/performShuffle:
+  //  - a month that already has a drawn_by_member_id (assigned OR shuffled)
+  //    can't be touched by either action again
+  //  - only the single "current" month (isCurrentMonth) is actionable -
+  //    past months are settled, future months haven't opened yet
+  const monthIsPast = !!monthDetail && !monthDetail.isCurrentMonth && selectedMonth < chit.monthsElapsed;
+  const monthIsFuture = !!monthDetail && !monthDetail.isCurrentMonth && selectedMonth > chit.monthsElapsed;
+  const drawerAlreadySet = !!monthDetail?.drawnByMemberId;
+  const assignLocked = !!monthDetail && (monthDetail.shuffled || drawerAlreadySet || !monthDetail.isCurrentMonth);
+  const shuffleLocked = !!monthDetail && (monthDetail.isClub || monthDetail.shuffled || drawerAlreadySet || !monthDetail.isCurrentMonth);
+  const monthLockReason = monthIsPast
+    ? 'This month has already passed.'
+    : monthIsFuture
+    ? "This month hasn't opened yet - only the current month is actionable."
+    : null;
+  const assignLockTitle = monthDetail?.shuffled
+    ? "This month was already decided by shuffle - the result is final."
+    : drawerAlreadySet
+    ? 'A drawer has already been assigned for this month.'
+    : monthLockReason || undefined;
+  const shuffleLockTitle = monthDetail?.isClub
+    ? "Month 2 is always Jolly Friends Club - no shuffle needed."
+    : monthDetail?.shuffled
+    ? 'Already used for this month - the result is final.'
+    : drawerAlreadySet
+    ? 'A drawer has already been assigned for this month.'
+    : monthLockReason || undefined;
+
   return (
     <div className="space-y-5">
       <div className="ledger-card p-5">
@@ -367,18 +396,24 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
+      {isAdmin && monthDetail && monthLockReason && (
+        <p className="text-xs text-ink-muted bg-paper border border-line rounded-lg px-3 py-2">
+          🔒 {monthLockReason} Assign and Shuffle are only available for the current month.
+        </p>
+      )}
+
       {isAdmin && monthDetail && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <button onClick={() => togglePanel('participants')} className="h-10 rounded-lg border border-line bg-white px-3 text-sm font-medium cursor-pointer hover:border-navy-light truncate">
             {panel === 'participants' ? 'Hide Participants' : 'View Participants'}
           </button>
-          {/* Shuffle stays visible even after use (or for the club's fixed month) - just fades to show it's not usable, rather than disappearing and shifting the layout. */}
+          {/* Shuffle stays visible even after use (or when locked) - just fades to show it's not usable, rather than disappearing and shifting the layout. */}
           <button
             onClick={handleShuffle}
-            disabled={shuffling || monthDetail.shuffled || monthDetail.isClub}
-            title={monthDetail.isClub ? "Month 2 is always Jolly Friends Club - no shuffle needed" : monthDetail.shuffled ? 'Already used for this month - the result is final' : undefined}
+            disabled={shuffling || shuffleLocked}
+            title={shuffleLockTitle}
             className={`h-10 rounded-lg bg-navy text-white px-3 text-sm font-medium transition-opacity truncate ${
-              monthDetail.shuffled || monthDetail.isClub ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+              shuffleLocked ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
             } ${shuffling ? 'opacity-80' : ''}`}
           >
             {shuffling ? (shuffleCycleName || 'Shuffling…') : monthDetail.shuffled ? '🎲 Shuffled ✓' : '🎲 Shuffle'}
@@ -469,7 +504,8 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                     {!monthDetail.isClub && (
                       <button
                         onClick={() => handleAssignDraw(p.memberId)}
-                        disabled={monthDetail.shuffled}
+                        disabled={assignLocked}
+                        title={p.isDrawer ? undefined : assignLockTitle}
                         className="text-xs bg-navy/10 text-navy px-2.5 py-1 rounded-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {p.isDrawer ? '✓ Assigned' : 'Assign as Drawer'}

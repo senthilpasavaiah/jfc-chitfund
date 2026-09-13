@@ -395,6 +395,11 @@ async function getMonthDetail(chit, monthIndex) {
     monthIndex,
     label: chitMonthLabel(chit.start_date, monthIndex),
     isClub,
+    // Lets the frontend grey out Assign/Shuffle for past and future months
+    // without guessing - it's the same "current month" rule the backend
+    // enforces in assignDraw/performShuffle, exposed here so the UI can
+    // match it instead of drifting out of sync.
+    isCurrentMonth: monthIndex === chitMonthsElapsed(chit.start_date, chit.total_months),
     drawnByName: isClub ? CLUB_NAME : md.drawn_by_member_id ? await getMemberName(md.drawn_by_member_id) : null,
     drawnByMemberId: isClub ? null : md.drawn_by_member_id,
     shuffled: isClub ? true : md.shuffled,
@@ -466,10 +471,29 @@ async function assignDraw(chitId, monthIndex, memberId, actingUserId) {
     throw ApiError.badRequest("Month 2 is always reserved for Jolly Friends Club - it can't be reassigned.");
   }
   const chit = await getById(chitId);
+  const elapsed = chitMonthsElapsed(chit.start_date, chit.total_months);
+  // Same "only the current month is actionable" rule as shuffle: past
+  // months are already settled and locked, future months haven't opened
+  // yet. Bug fix: this check didn't exist before, so a drawer could be
+  // (re)assigned for any past or future month via direct API calls.
+  if (monthIndex !== elapsed) {
+    throw ApiError.badRequest(
+      monthIndex < elapsed
+        ? 'This month has already passed - drawer assignment is locked.'
+        : 'Drawer assignment only opens once this becomes the current month.'
+    );
+  }
   const monthDataByIndex = await ensureMonthData(chit);
   const md = monthDataByIndex.get(monthIndex);
   if (md.shuffled) {
     throw ApiError.badRequest("This month was already decided by shuffle - the result is final and can't be changed.");
+  }
+  // Bug fix: previously only `shuffled` was checked here, so a month that
+  // already had a manually-assigned drawer could silently be reassigned to
+  // someone else. Once a drawer exists for a month (by any method), Assign
+  // is locked for that month.
+  if (md.drawn_by_member_id) {
+    throw ApiError.badRequest('A drawer has already been assigned for this month.');
   }
   await query(`UPDATE chit_month_data SET drawn_by_member_id = $1 WHERE id = $2`, [memberId || null, md.id]);
 
@@ -512,13 +536,26 @@ async function performShuffle(chitId, monthIndex, memberIds, actingUserId) {
   }
   const chit = await getById(chitId);
   const elapsed = chitMonthsElapsed(chit.start_date, chit.total_months);
-  if (monthIndex > elapsed) {
-    throw ApiError.badRequest('Shuffling only opens once this becomes the current month.');
+  // Bug fix: this used to be `monthIndex > elapsed`, which correctly kept
+  // future months locked but let PAST months be shuffled too (elapsed is
+  // the current month's index, so anything strictly less than it is
+  // already completed and must be locked, same as Assign).
+  if (monthIndex !== elapsed) {
+    throw ApiError.badRequest(
+      monthIndex < elapsed
+        ? 'This month has already passed - shuffling is locked.'
+        : 'Shuffling only opens once this becomes the current month.'
+    );
   }
   const monthDataByIndex = await ensureMonthData(chit);
   const md = monthDataByIndex.get(monthIndex);
   if (md.shuffled) {
     throw ApiError.badRequest('Shuffle has already been used for this month.');
+  }
+  // Bug fix: a month that already has a manually-assigned drawer could
+  // previously be overwritten by shuffle since only `shuffled` was checked.
+  if (md.drawn_by_member_id) {
+    throw ApiError.badRequest('A drawer has already been assigned for this month - shuffle is locked.');
   }
   if (!memberIds || memberIds.length === 0) {
     throw ApiError.badRequest('Select at least one participant to include in the shuffle.');
