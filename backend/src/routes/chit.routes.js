@@ -63,6 +63,13 @@ router.patch(
   validate,
   chitController.togglePaid
 );
+router.post(
+  '/:id/months/:monthIndex/payment/mark-all',
+  authorize('ADMIN', 'MANAGER', 'COLLECTOR'),
+  monthParams,
+  validate,
+  chitController.markAllPaid
+);
 router.post('/:id/months/:monthIndex/pay', monthParams, validate, chitController.payForMonth);
 
 router.patch(

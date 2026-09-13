@@ -433,6 +433,34 @@ async function payForMonth(chitId, monthIndex, memberId) {
   );
 }
 
+/**
+ * Marks every real participant of THIS chit as Paid for THIS month only.
+ * "Real participant" = a row in chit_members - the Jolly Friends Club slot
+ * is never a row there (it's a fixed, synthetic slot handled separately by
+ * getSlotArray/getMonthDetail), so it's excluded automatically and no fake
+ * payment record is ever created for it. Already-paid members are simply
+ * re-affirmed as paid (ON CONFLICT ... DO UPDATE), so this never creates a
+ * duplicate row and is safe to call more than once.
+ */
+async function markAllPaidForMonth(chitId, monthIndex) {
+  const chit = await getById(chitId);
+  const monthDataByIndex = await ensureMonthData(chit);
+  const md = monthDataByIndex.get(monthIndex);
+  const participants = await getParticipants(chitId);
+
+  await withTransaction(async (client) => {
+    for (const p of participants) {
+      await client.query(
+        `INSERT INTO chit_month_payments (chit_month_data_id, member_id, paid) VALUES ($1,$2,TRUE)
+         ON CONFLICT (chit_month_data_id, member_id) DO UPDATE SET paid = TRUE`,
+        [md.id, p.member_id]
+      );
+    }
+  });
+
+  return { monthIndex, markedCount: participants.length };
+}
+
 async function assignDraw(chitId, monthIndex, memberId, actingUserId) {
   if (monthIndex === CLUB_SLOT_INDEX) {
     throw ApiError.badRequest("Month 2 is always reserved for Jolly Friends Club - it can't be reassigned.");
@@ -667,6 +695,7 @@ module.exports = {
   getMonthDetail,
   togglePaid,
   payForMonth,
+  markAllPaidForMonth,
   assignDraw,
   submitRequest,
   cancelRequest,

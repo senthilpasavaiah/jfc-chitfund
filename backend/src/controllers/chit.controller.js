@@ -74,6 +74,12 @@ async function payForMonth(req, res) {
   res.json({ success: true, message: 'Marked as paid.' });
 }
 
+async function markAllPaid(req, res) {
+  const result = await chitService.markAllPaidForMonth(req.params.id, Number(req.params.monthIndex));
+  await recordAudit({ userId: req.user.id, action: 'CHIT_PAYMENT_MARK_ALL', entityType: 'Chit', entityId: req.params.id, metadata: { monthIndex: req.params.monthIndex, markedCount: result.markedCount }, ipAddress: req.ip });
+  res.json({ success: true, data: result });
+}
+
 async function assignDraw(req, res) {
   await chitService.assignDraw(req.params.id, Number(req.params.monthIndex), req.body.memberId, req.user.id);
   await recordAudit({ userId: req.user.id, action: 'CHIT_DRAW_ASSIGN', entityType: 'Chit', entityId: req.params.id, metadata: { monthIndex: req.params.monthIndex, memberId: req.body.memberId }, ipAddress: req.ip });
@@ -104,6 +110,6 @@ async function getLedger(req, res) {
 module.exports = {
   updateRefNumber,
   create, list, getById, deleteChit, addMembers, removeMember, join, leave,
-  getMonthDetail, togglePaid, payForMonth, assignDraw, submitRequest, cancelRequest,
+  getMonthDetail, togglePaid, payForMonth, markAllPaid, assignDraw, submitRequest, cancelRequest,
   performShuffle, getLedger,
 };

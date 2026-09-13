@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import client from '../api/client';
 import type { ChitDetail, ChitMonthDetail } from '../types';
@@ -36,13 +36,28 @@ export default function ChitDetailPage() {
   const [shuffleCycleName, setShuffleCycleName] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
+  const [markingAll, setMarkingAll] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Tracks whether we've already auto-picked "the current month" for THIS
+  // chit id. Previously the auto-pick logic ran on every loadChit() call
+  // (every payment toggle refreshes the chit) and used `selectedMonth === 0`
+  // as a proxy for "not yet chosen" - which is wrong, because 0 is also a
+  // perfectly valid explicit selection (Month 1). That's what caused the
+  // page to jump back to the current month specifically when viewing Month
+  // 1 and marking someone paid. Now we only auto-pick once per chit, right
+  // after the id changes, and never again on subsequent refreshes.
+  const hasAutoSelectedMonth = useRef(false);
 
   async function loadChit() {
     try {
       const res = await client.get(`/chits/${id}`);
       setChit(res.data.data);
-      const elapsed = res.data.data.monthsElapsed;
-      setSelectedMonth((cur) => (cur === 0 ? Math.min(elapsed, res.data.data.totalMonths - 1) : cur));
+      if (!hasAutoSelectedMonth.current) {
+        hasAutoSelectedMonth.current = true;
+        const elapsed = res.data.data.monthsElapsed;
+        setSelectedMonth(Math.min(elapsed, res.data.data.totalMonths - 1));
+      }
     } catch (err: any) {
       // Not a participant (or the chit doesn't exist) - the backend already
       // enforces this; here we just stop rendering internal details instead
@@ -66,6 +81,9 @@ export default function ChitDetailPage() {
   }
 
   useEffect(() => {
+    // A fresh chit (navigated from the list, or a different id) should get
+    // its own auto-picked month again.
+    hasAutoSelectedMonth.current = false;
     loadChit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -73,6 +91,7 @@ export default function ChitDetailPage() {
   useEffect(() => {
     if (chit) loadMonth(selectedMonth);
     setPanel('none');
+    setSuccessMessage(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth, chit?.id]);
 
@@ -88,6 +107,7 @@ export default function ChitDetailPage() {
 
   function togglePanel(p: 'participants' | 'ledger') {
     setError(null);
+    setSuccessMessage(null);
     if (panel === p) {
       setPanel('none');
       return;
@@ -112,6 +132,23 @@ export default function ChitDetailPage() {
     }
     // Turning ON requires proof - open the inline choice instead of toggling directly.
     setMarkingMemberId((cur) => (cur === memberId ? null : memberId));
+  }
+
+  async function handleMarkAllPaid() {
+    if (!monthDetail || markingAll) return; // guards against accidental double-submit
+    setError(null);
+    setSuccessMessage(null);
+    setMarkingAll(true);
+    try {
+      const currentMonth = selectedMonth; // captured for the confirmation message only
+      await client.post(`/chits/${id}/months/${currentMonth}/payment/mark-all`);
+      await Promise.all([loadMonth(currentMonth), loadChit()]);
+      setSuccessMessage(`All participants marked Paid for ${monthDetail.label}.`);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Could not mark all as paid.');
+    } finally {
+      setMarkingAll(false);
+    }
   }
 
   async function handleAdminUploadProof(memberId: string, file: File) {
@@ -371,7 +408,20 @@ export default function ChitDetailPage() {
         <div className="overflow-hidden min-h-0">
           {isAdmin && monthDetail && (
             <div className="ledger-card p-5 mt-0">
-              <div className="text-xs uppercase tracking-wide text-ink-muted mb-3">Participants — Payment &amp; Draw Assignment</div>
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                <div className="text-xs uppercase tracking-wide text-ink-muted">Participants — Payment &amp; Draw Assignment</div>
+                <button
+                  onClick={handleMarkAllPaid}
+                  disabled={markingAll || monthDetail.participants.length === 0 || monthDetail.participants.every((p) => p.paid)}
+                  title="Marks every participant Paid for this month only. Jolly Friends Club is excluded — it never has a payment row."
+                  className="text-xs font-medium bg-success text-white px-3 py-1.5 rounded-md cursor-pointer hover:bg-success/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {markingAll ? 'Marking…' : '✓ Select All Paid'}
+                </button>
+              </div>
+              {successMessage && (
+                <div className="mb-3 text-xs font-medium text-success bg-success/10 px-3 py-2 rounded-md">{successMessage}</div>
+              )}
               {pendingProofs.length > 0 && (
                 <div className="mb-4 p-3 bg-gold/10 border border-gold rounded-lg">
                   <div className="text-xs font-bold mb-2">Pending payment proofs</div>
