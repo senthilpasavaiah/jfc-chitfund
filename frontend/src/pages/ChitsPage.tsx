@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import client from '../api/client';
 import type { Chit, RateSchedule } from '../types';
 import { useAuth } from '../context/AuthContext';
+import ChitDetailPanel from '../components/ChitDetailPanel';
 
 function formatINR(amount: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
@@ -34,6 +34,9 @@ export default function ChitsPage() {
   const [chits, setChits] = useState<Chit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showWizard, setShowWizard] = useState(false);
+  // Which chits are expanded inline (accordion) - a Set so any number of
+  // chits can be open at once, independently of one another.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   async function load() {
     setLoading(true);
@@ -47,6 +50,15 @@ export default function ChitsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  function toggleExpanded(chitId: string) {
+    setExpandedIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(chitId)) next.delete(chitId);
+      else next.add(chitId);
+      return next;
+    });
+  }
+
   const sortedChits = [...chits].sort((a, b) => {
     if (sortBy === 'valueLakh') return b.valueLakh - a.valueLakh;
     if (sortBy === 'startDate') return new Date(b.startDate || 0).getTime() - new Date(a.startDate || 0).getTime();
@@ -54,7 +66,7 @@ export default function ChitsPage() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium">
@@ -97,7 +109,7 @@ export default function ChitsPage() {
         />
       )}
 
-      <div className="grid gap-4">
+      <div className="grid gap-2.5">
         {loading ? (
           <p className="text-ink-muted">Loading…</p>
         ) : sortedChits.length === 0 ? (
@@ -108,31 +120,32 @@ export default function ChitsPage() {
             // Admin/Manager). Default to accessible when it's absent so we
             // never accidentally lock people out before the field exists.
             const clickable = canManage || chit.canAccess !== false;
+            const isExpanded = expandedIds.has(chit.id);
             const cardContent = (
               <>
-                <div>
-                  <div className="font-medium">{chit.refNumber}</div>
-                  <div className="text-xs text-ink-muted mt-0.5">
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{chit.refNumber}</div>
+                  <div className="text-xs text-ink-muted mt-0.5 truncate">
                     {chit.valueLakh} Lakh · {chit.totalMonths} Months · {chit.rateSchedule === 'jfc' ? 'JFC Rate' : 'Standard Rate'}
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="text-right shrink-0">
                   <div className="font-tabular text-lg">{formatINR(chit.valueLakh * 100000)}</div>
                   <div className="text-xs text-ink-muted">
                     {chit.status === 'ongoing' ? `Month ${chit.monthsElapsed + 1} of ${chit.totalMonths}` : chit.status === 'upcoming' ? `Starts ${chit.startDate ? new Date(chit.startDate).toLocaleDateString('en-IN') : ''}` : 'Completed'}
                   </div>
                 </div>
-                <span className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${STATUS_STYLES[chit.status]}`}>{chit.status}</span>
+                <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium capitalize ${STATUS_STYLES[chit.status]}`}>{chit.status}</span>
               </>
             );
 
             if (!clickable) {
               // Not a participant in this chit - shown in the list, but not
-              // openable. No hover affordance, no navigation.
+              // openable. No hover affordance, no toggle, no navigation.
               return (
                 <div
                   key={chit.id}
-                  className="ledger-card p-5 flex items-center justify-between opacity-60 cursor-default select-none"
+                  className="ledger-card p-3.5 flex items-center justify-between flex-wrap gap-x-3 gap-y-2 opacity-60 cursor-default select-none"
                   aria-disabled="true"
                   title="You are not a participant in this chit."
                 >
@@ -142,13 +155,37 @@ export default function ChitsPage() {
             }
 
             return (
-              <Link
-                key={chit.id}
-                to={`/chits/${chit.id}`}
-                className="ledger-card p-5 flex items-center justify-between hover:border-gold transition-colors"
-              >
-                {cardContent}
-              </Link>
+              <div key={chit.id} className="ledger-card overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => toggleExpanded(chit.id)}
+                  aria-expanded={isExpanded}
+                  className="w-full p-3.5 flex items-center justify-between flex-wrap gap-x-3 gap-y-2 text-left cursor-pointer hover:bg-paper/60 transition-colors"
+                >
+                  {cardContent}
+                  <span className="shrink-0 flex items-center gap-1 text-xs font-medium text-navy border border-line rounded-md px-2.5 py-1 ml-auto sm:ml-0">
+                    {isExpanded ? 'Hide' : 'View'}
+                    <span className={`inline-block transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
+                  </span>
+                </button>
+                {/* Smooth expand/collapse via animated grid-rows, same pattern used inside the chit detail panel itself. */}
+                <div className="grid transition-all duration-300 ease-out" style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}>
+                  <div className="overflow-hidden min-h-0">
+                    <div className="px-3.5 pb-3.5 pt-3 border-t border-line">
+                      {isExpanded && (
+                        <ChitDetailPanel
+                          chitId={chit.id}
+                          onDeleted={() => {
+                            toggleExpanded(chit.id);
+                            load();
+                          }}
+                          onRequestClose={() => toggleExpanded(chit.id)}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
             );
           })
         )}
