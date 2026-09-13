@@ -593,37 +593,76 @@ async function syncAccounting(chitId) {
   const monthDataByIndex = await ensureMonthData(chit);
   const rateSchedule = chit.rate_schedule || 'jfc';
 
+  // Root cause of CHIT-2026-008/009's missing income: this used to trust
+  // `chit_month_data.accounted` alone. That flag can end up TRUE for a
+  // month with ZERO ledger rows behind it - e.g. an old run that booked a
+  // month while value_lakh was still unset/0 (silently, with no income
+  // inserted per the `commission > 0` guard below), or a data-repair
+  // migration that reset value_lakh without also resetting `accounted`.
+  // The result is a month that's permanently skipped (`if (md.accounted)
+  // continue`) and permanently missing its real income.
+  //
+  // Cross-checking against the ledger's actual rows instead means any such
+  // gap self-heals the next time this runs, for any chit, without another
+  // manual SQL patch - and because a month is only ever (re)booked when it
+  // has ZERO existing rows, an already-correct month can never be
+  // duplicated. `chit_auto_ledger` also carries a DB-level unique
+  // constraint on (chit_id, month_index, category) as a second, race-proof
+  // guard against duplicate transactions if two syncs overlap.
+  const { rows: bookedRows } = await query(
+    `SELECT DISTINCT month_index FROM chit_auto_ledger WHERE chit_id = $1`,
+    [chitId]
+  );
+  const bookedMonths = new Set(bookedRows.map((r) => r.month_index));
+
   for (let i = 0; i <= elapsed && i < chit.total_months; i++) {
     const md = monthDataByIndex.get(i);
-    if (md.accounted) continue;
+
+    if (bookedMonths.has(i)) {
+      // Real ledger rows already exist for this month - never re-insert.
+      // Just make sure the flag agrees, healing the reverse mismatch
+      // (booked but left unflagged, e.g. an interrupted earlier run).
+      if (!md.accounted) {
+        await query(`UPDATE chit_month_data SET accounted = TRUE WHERE id = $1`, [md.id]);
+      }
+      continue;
+    }
 
     const entryDate = chitMonthDate(chit.start_date, i);
     const monthLabel = chitMonthLabel(chit.start_date, i);
     const commission = i === CLUB_SLOT_INDEX ? 0 : chitCommissionRate(chit.total_months, rateSchedule) * Number(chit.value_lakh);
-
-    if (commission > 0) {
-      await query(
-        `INSERT INTO chit_auto_ledger (chit_id, month_index, month_label, entry_date, type, category, amount)
-         VALUES ($1,$2,$3,$4,'income','Commission',$5)`,
-        [chitId, i, monthLabel, entryDate, commission]
-      );
-    }
-    if (i === CLUB_SLOT_INDEX) {
-      const payout = chitPayoutForRound(chit, i);
-      await query(
-        `INSERT INTO chit_auto_ledger (chit_id, month_index, month_label, entry_date, type, category, amount)
-         VALUES ($1,$2,$3,$4,'income','Club Payout (Month 2)',$5)`,
-        [chitId, i, monthLabel, entryDate, payout]
-      );
-    }
     const myShare = chitMonthlyPaymentForRound(chit, i);
-    await query(
-      `INSERT INTO chit_auto_ledger (chit_id, month_index, month_label, entry_date, type, category, amount)
-       VALUES ($1,$2,$3,$4,'expense','Club Contribution (as participant)',$5)`,
-      [chitId, i, monthLabel, entryDate, myShare]
-    );
+    const payout = i === CLUB_SLOT_INDEX ? chitPayoutForRound(chit, i) : null;
 
-    await query(`UPDATE chit_month_data SET accounted = TRUE WHERE id = $1`, [md.id]);
+    // Booked atomically, with ON CONFLICT DO NOTHING as a belt-and-braces
+    // guard: either this whole month's entries land together, or none do,
+    // and a concurrent sync racing on the same month can never duplicate it.
+    await withTransaction(async (client) => {
+      if (commission > 0) {
+        await client.query(
+          `INSERT INTO chit_auto_ledger (chit_id, month_index, month_label, entry_date, type, category, amount)
+           VALUES ($1,$2,$3,$4,'income','Commission',$5)
+           ON CONFLICT (chit_id, month_index, category) DO NOTHING`,
+          [chitId, i, monthLabel, entryDate, commission]
+        );
+      }
+      if (payout !== null) {
+        await client.query(
+          `INSERT INTO chit_auto_ledger (chit_id, month_index, month_label, entry_date, type, category, amount)
+           VALUES ($1,$2,$3,$4,'income','Club Payout (Month 2)',$5)
+           ON CONFLICT (chit_id, month_index, category) DO NOTHING`,
+          [chitId, i, monthLabel, entryDate, payout]
+        );
+      }
+      await client.query(
+        `INSERT INTO chit_auto_ledger (chit_id, month_index, month_label, entry_date, type, category, amount)
+         VALUES ($1,$2,$3,$4,'expense','Club Contribution (as participant)',$5)
+         ON CONFLICT (chit_id, month_index, category) DO NOTHING`,
+        [chitId, i, monthLabel, entryDate, myShare]
+      );
+      await client.query(`UPDATE chit_month_data SET accounted = TRUE WHERE id = $1`, [md.id]);
+    });
+    bookedMonths.add(i);
   }
 }
 
