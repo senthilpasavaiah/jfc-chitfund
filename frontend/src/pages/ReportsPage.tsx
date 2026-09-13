@@ -16,6 +16,7 @@ interface ChitSummaryRow {
   income: number;
   expense: number | null;
   net: number;
+  error?: string;
 }
 
 interface ReportData {
@@ -247,7 +248,12 @@ export default function ReportsPage() {
                 ) : (
                   report.chitSummary.map((c) => (
                     <tr key={`${c.type}-${c.id}`} className="border-t border-line">
-                      <td className="px-4 py-2.5">{chitLabel(c)}</td>
+                      <td className="px-4 py-2.5">
+                        {chitLabel(c)}
+                        {c.error && (
+                          <span className="ml-2 text-xs text-danger" title={c.error}>⚠ Data issue — figures unavailable</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5 capitalize">{c.status}</td>
                       <td className="px-4 py-2.5 text-right font-tabular">{formatINR(c.income)}</td>
                       <td className="px-4 py-2.5 text-right font-tabular">{c.expense === null ? '—' : formatINR(c.expense)}</td>

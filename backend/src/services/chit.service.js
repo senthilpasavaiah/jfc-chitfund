@@ -580,6 +580,15 @@ async function performShuffle(chitId, monthIndex, memberIds, actingUserId) {
 
 async function syncAccounting(chitId) {
   const chit = await getById(chitId);
+  if (chit.value_lakh === null || chit.value_lakh === undefined || Number(chit.value_lakh) <= 0) {
+    // Fails loudly instead of silently booking every ledger entry at 0 -
+    // this is how CHIT-2026-008 went missing from Income (value_lakh was
+    // never backfilled after migration 010 added the column). See
+    // prisma/sql/014_backfill_value_lakh.sql for the one-time data fix.
+    throw ApiError.badRequest(
+      `Chit ${chit.ref_number} has no valid value_lakh set - cannot compute its income/expense ledger.`
+    );
+  }
   const elapsed = chitMonthsElapsed(chit.start_date, chit.total_months);
   const monthDataByIndex = await ensureMonthData(chit);
   const rateSchedule = chit.rate_schedule || 'jfc';

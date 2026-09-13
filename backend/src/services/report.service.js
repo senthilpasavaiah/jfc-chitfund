@@ -72,19 +72,35 @@ async function buildReport({ period, from, to }) {
   const allChits = await chitService.list({});
   const chitRows = await Promise.all(
     allChits.map(async (c) => {
-      const ledger = await chitService.getLedger(c.id);
-      const entries = ledger.entries.filter((e) => inRange(e.entry_date, range));
-      const income = entries.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0);
-      const expense = entries.filter((e) => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0);
-      return {
-        type: 'live',
-        id: c.id,
-        refNumber: c.refNumber,
-        status: c.status,
-        income: round2(income),
-        expense: round2(expense),
-        net: round2(income - expense),
-      };
+      try {
+        const ledger = await chitService.getLedger(c.id);
+        const entries = ledger.entries.filter((e) => inRange(e.entry_date, range));
+        const income = entries.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0);
+        const expense = entries.filter((e) => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0);
+        return {
+          type: 'live',
+          id: c.id,
+          refNumber: c.refNumber,
+          status: c.status,
+          income: round2(income),
+          expense: round2(expense),
+          net: round2(income - expense),
+        };
+      } catch (err) {
+        // A chit with bad data (e.g. missing value_lakh - see
+        // prisma/sql/014_backfill_value_lakh.sql) shouldn't fail the whole
+        // report. Surface it clearly instead of silently reporting 0.
+        return {
+          type: 'live',
+          id: c.id,
+          refNumber: c.refNumber,
+          status: c.status,
+          income: 0,
+          expense: 0,
+          net: 0,
+          error: err.message,
+        };
+      }
     })
   );
   const liveChitIncome = chitRows.reduce((s, c) => s + c.income, 0);

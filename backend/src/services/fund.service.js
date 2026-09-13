@@ -9,9 +9,17 @@ const ApiError = require('../utils/ApiError');
  */
 async function syncAllChitLedgers() {
   const chitService = require('./chit.service');
-  const { rows } = await query(`SELECT id FROM chits`);
-  for (const { id } of rows) {
-    await chitService.syncAccounting(id);
+  const logger = require('../config/logger');
+  const { rows } = await query(`SELECT id, ref_number FROM chits`);
+  for (const { id, ref_number } of rows) {
+    try {
+      await chitService.syncAccounting(id);
+    } catch (err) {
+      // A single chit with bad data (e.g. missing value_lakh) shouldn't
+      // take down the whole Dashboard/Reports summary - log it and keep
+      // going so the rest of the figures still load.
+      logger.error(`syncAccounting failed for chit ${ref_number} (${id}): ${err.message}`);
+    }
   }
 }
 
