@@ -1,5 +1,6 @@
-const { query } = require('../config/db');
 const chitService = require('./chit.service');
+const fundService = require('./fund.service');
+const expenseService = require('./expense.service');
 
 const PERIOD_MONTHS = {
   monthly: 1,
@@ -21,106 +22,151 @@ function resolveRange({ period, from, to }) {
   return { from: from_, to: to_ };
 }
 
+/** True when `date` falls within `range`. An unbounded range (all-time) always matches. */
+function inRange(date, range) {
+  if (!range.from || !range.to) return true;
+  if (!date) return false;
+  const d = new Date(date);
+  return d >= range.from && d <= range.to;
+}
+
+function round2(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Builds the Association-level financial report.
+ *
+ * This is deliberately NOT a dump of every payment ever recorded. It answers
+ * one question for a non-technical committee member: "where did the
+ * Association's money come from, where did it go, and what's left over?"
+ *
+ *   Association Income
+ *     - Chit Income:   each live chit's own auto-booked ledger income
+ *                       (organizer commission + the Club's payout when its
+ *                       reserved slot comes due) - the exact same numbers
+ *                       shown on that chit's "Income & Expenses" panel -
+ *                       plus historical (pre-app) chit profit, shown only
+ *                       in the All-time view since those records predate
+ *                       per-entry dates.
+ *     - Other Income:   Donations + Santha collections.
+ *   Association Expenses
+ *     - Club's Contribution to Chits: the Club's own monthly payment as a
+ *       participant in each chit (a real cash outflow, per the same
+ *       auto-booked ledger).
+ *     - Office & Miscellaneous Expenses: the day-to-day expenses ledger.
+ *   Net Profit / Surplus = Total Income - Total Expenses
+ *   Chit-wise summary: Chit -> Income -> Expenses -> Net, for anyone who
+ *     wants the per-chit picture without wading through member-level detail
+ *     (that detail lives on each Chit's own detail page, not here).
+ *
+ * Individual member paid/pending status is intentionally excluded - it
+ * belongs to the respective Chit Detail page, not the Association report.
+ */
 async function buildReport({ period, from, to }) {
   const range = resolveRange({ period, from, to });
-  const params = [];
-  let dateClause = '';
-  if (range.from && range.to) {
-    params.push(range.from, range.to);
-    dateClause = `AND paid_at BETWEEN $1 AND $2`;
-  }
+  const isAllTime = !range.from || !range.to;
 
-  const totalsResult = await query(
-    `SELECT COALESCE(SUM(amount), 0)::float AS total_collected, COUNT(*)::int AS payment_count
-     FROM payments WHERE 1=1 ${dateClause}`,
-    params
-  );
-
-  const expenseDateClause = range.from && range.to ? `AND spent_at BETWEEN $1 AND $2` : '';
-  const expensesResult = await query(
-    `SELECT COALESCE(SUM(amount), 0)::float AS total_expenses, COUNT(*)::int AS expense_count
-     FROM expenses WHERE 1=1 ${expenseDateClause}`,
-    params
-  );
-
-  const monthlyResult = await query(
-    `SELECT date_trunc('month', paid_at) AS month, COALESCE(SUM(amount), 0)::float AS collected
-     FROM payments WHERE 1=1 ${dateClause}
-     GROUP BY 1 ORDER BY 1 ASC`,
-    params
-  );
-
-  const memberResult = await query(
-    `SELECT m.id, m.name, m.mobile_number,
-            COALESCE(SUM(p.amount), 0)::float AS total_paid,
-            COUNT(p.id)::int AS payment_count
-     FROM members m
-     LEFT JOIN payments p ON p.member_id = m.id ${range.from && range.to ? 'AND p.paid_at BETWEEN $1 AND $2' : ''}
-     GROUP BY m.id, m.name, m.mobile_number
-     HAVING COUNT(p.id) > 0
-     ORDER BY total_paid DESC`,
-    params
-  );
-
-  const chitCollections = await chitService.getConfirmedChitCollections({ from: range.from, to: range.to });
+  // --- Live chits: reuse each chit's own auto-booked ledger (chit.service),
+  // the same data source as its "Income & Expenses" panel. ---
   const allChits = await chitService.list({});
+  const chitRows = await Promise.all(
+    allChits.map(async (c) => {
+      const ledger = await chitService.getLedger(c.id);
+      const entries = ledger.entries.filter((e) => inRange(e.entry_date, range));
+      const income = entries.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0);
+      const expense = entries.filter((e) => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0);
+      return {
+        type: 'live',
+        id: c.id,
+        refNumber: c.refNumber,
+        status: c.status,
+        income: round2(income),
+        expense: round2(expense),
+        net: round2(income - expense),
+      };
+    })
+  );
+  const liveChitIncome = chitRows.reduce((s, c) => s + c.income, 0);
+  const liveChitExpense = chitRows.reduce((s, c) => s + c.expense, 0);
 
-  const totalCollected = totalsResult.rows[0].total_collected + chitCollections.total;
-  const totalExpenses = expensesResult.rows[0].total_expenses;
+  // --- Historical (pre-app) chit rounds - net profit only, no per-entry
+  // date to filter by, so only surfaced in the All-time view. ---
+  const historyRows = isAllTime ? await fundService.listChitProfitHistory() : [];
+  const historicalChitIncome = historyRows.reduce((s, r) => s + Number(r.profit_amount), 0);
+  const historicalChitRows = historyRows.map((r) => ({
+    type: 'historical',
+    id: r.id,
+    refNumber: r.label,
+    status: r.fiscal_year_label,
+    income: round2(Number(r.profit_amount)),
+    expense: null, // not tracked per-round for historical rounds
+    net: round2(Number(r.profit_amount)),
+  }));
 
-  const monthlyMap = new Map();
-  for (const r of monthlyResult.rows) {
-    const key = new Date(r.month).toISOString().slice(0, 7);
-    monthlyMap.set(key, (monthlyMap.get(key) || 0) + r.collected);
-  }
-  for (const r of chitCollections.byMonth) {
-    monthlyMap.set(r.month, (monthlyMap.get(r.month) || 0) + r.collected);
-  }
-  const monthlyBreakdown = Array.from(monthlyMap.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, collected]) => ({ month, collected }));
+  // --- Other Association income: Donations + Santha collections. ---
+  const [donationRows, santhaRows] = await Promise.all([fundService.listDonations(), fundService.listSantha()]);
+  const donationTotal = donationRows
+    .filter((d) => inRange(d.donated_at, range))
+    .reduce((s, d) => s + Number(d.amount), 0);
+  const santhaTotal = santhaRows
+    .filter((s) => inRange(s.entry_date, range))
+    .reduce((s, r) => s + Number(r.amount), 0);
+  const otherIncome = donationTotal + santhaTotal;
 
-  const chitCollectedById = new Map(chitCollections.byChit.map((c) => [c.id, c]));
-  const chitBreakdown = allChits.map((c) => {
-    const collected = chitCollectedById.get(c.id);
-    return {
-      id: c.id,
-      refNumber: c.refNumber,
-      name: c.refNumber,
-      status: c.status,
-      collected: collected ? collected.collected : 0,
-      paymentCount: collected ? collected.paymentCount : 0,
-    };
-  });
+  // --- Association expenses: the office/miscellaneous expenses ledger. ---
+  const expenseRows = await expenseService.list({ from: range.from, to: range.to });
+  const operatingExpenses = expenseRows.reduce((s, e) => s + Number(e.amount), 0);
 
-  const memberMap = new Map();
-  for (const r of memberResult.rows) {
-    memberMap.set(r.id, { id: r.id, name: r.name, mobileNumber: r.mobile_number, totalPaid: r.total_paid, paymentCount: r.payment_count });
-  }
-  for (const r of chitCollections.byMember) {
-    const existing = memberMap.get(r.id);
-    if (existing) {
-      existing.totalPaid += r.totalPaid;
-      existing.paymentCount += r.paymentCount;
-    } else {
-      memberMap.set(r.id, { id: r.id, name: r.name, mobileNumber: r.mobileNumber, totalPaid: r.totalPaid, paymentCount: r.paymentCount });
-    }
-  }
-  const memberBreakdown = Array.from(memberMap.values()).sort((a, b) => b.totalPaid - a.totalPaid);
+  const chitIncome = liveChitIncome + historicalChitIncome;
+  const totalIncome = chitIncome + otherIncome;
+  const totalExpenses = liveChitExpense + operatingExpenses;
+  const netProfit = totalIncome - totalExpenses;
 
   return {
     period: period || 'historical',
     range: { from: range.from, to: range.to },
-    summary: {
-      totalCollected,
-      paymentCount: totalsResult.rows[0].payment_count + chitCollections.count,
-      totalExpenses,
-      expenseCount: expensesResult.rows[0].expense_count,
-      net: totalCollected - totalExpenses,
+
+    association: {
+      income: {
+        chitIncome: round2(chitIncome),
+        otherIncome: round2(otherIncome),
+        total: round2(totalIncome),
+      },
+      expenses: {
+        chitExpenses: round2(liveChitExpense),
+        operatingExpenses: round2(operatingExpenses),
+        total: round2(totalExpenses),
+      },
+      netProfit: round2(netProfit),
     },
-    monthlyBreakdown,
-    chitBreakdown,
-    memberBreakdown,
+
+    incomeBreakdown: [
+      {
+        label: 'Chit Income (commission & Club payouts, active chits)',
+        amount: round2(liveChitIncome),
+      },
+      ...(isAllTime
+        ? [{ label: 'Historical Chit Profit (pre-app records)', amount: round2(historicalChitIncome) }]
+        : []),
+      { label: 'Donations', amount: round2(donationTotal) },
+      { label: 'Santha Collections', amount: round2(santhaTotal) },
+    ].filter((row) => row.amount !== 0 || row.label.startsWith('Chit Income')),
+
+    expenseBreakdown: [
+      { label: "Club's Contribution to Chits (as a participant)", amount: round2(liveChitExpense) },
+      { label: 'Office & Miscellaneous Expenses', amount: round2(operatingExpenses) },
+    ],
+
+    chitSummary: [...chitRows, ...historicalChitRows],
+
+    meta: {
+      historicalRecordsIncluded: isAllTime,
+      liveChitsReporting: chitRows.length,
+      donationEntries: donationRows.filter((d) => inRange(d.donated_at, range)).length,
+      santhaEntries: santhaRows.filter((s) => inRange(s.entry_date, range)).length,
+      expenseEntries: expenseRows.length,
+    },
   };
 }
 
