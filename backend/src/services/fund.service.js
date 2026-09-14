@@ -124,8 +124,16 @@ async function summary() {
   const donationTotal = await query(`SELECT COALESCE(SUM(amount),0)::float AS total FROM donations`);
   const santhaTotal = await query(`SELECT COALESCE(SUM(amount),0)::float AS total FROM santha_entries`);
   const chitProfitHistoryTotal = await query(`SELECT COALESCE(SUM(profit_amount),0)::float AS total FROM chit_profit_history`);
-  const liveChitCommission = await query(
-    `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger WHERE type = 'income' AND category = 'Commission'`
+  // Bug fix: this used to filter `category = 'Commission'`, silently
+  // excluding the "Club Payout (Month 2)" income rows - the Report page
+  // (report.service.js) correctly sums EVERY income row per chit
+  // (Commission + Club Payout), which is why a chit's ₹2,50,000 Club
+  // Payout showed up there but never reached the Dashboard/Fund total.
+  // Matching the Report's own definition (all `type = 'income'` rows,
+  // no category filter) is what keeps the two from disagreeing - and
+  // stays correct automatically if a category is ever renamed or added.
+  const liveChitIncome = await query(
+    `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger WHERE type = 'income'`
   );
   // Bug fix: the Dashboard's "Expenses" card and the Fund page's own
   // Expenses/Chit Profit totals used to be computed independently (in
@@ -145,7 +153,7 @@ async function summary() {
      FROM settlement_summary`
   );
 
-  const incomeViaChit = chitProfitHistoryTotal.rows[0].total + liveChitCommission.rows[0].total;
+  const incomeViaChit = chitProfitHistoryTotal.rows[0].total + liveChitIncome.rows[0].total;
   const incomeViaDonation = donationTotal.rows[0].total;
   const incomeViaSantha = santhaTotal.rows[0].total;
   const currentlyInHand = settlementTotals.rows[0].principal;
@@ -159,7 +167,9 @@ async function summary() {
     totalIncome: incomeViaChit + incomeViaDonation + incomeViaSantha,
     // Broken out so the UI can show/label each part separately as well as
     // the combined figure - same pattern already used for incomeViaChit.
-    liveChitCommission: liveChitCommission.rows[0].total,
+    // (Renamed from liveChitCommission -> liveChitIncome: it now genuinely
+    // covers all chit income, not just the Commission category.)
+    liveChitIncome: liveChitIncome.rows[0].total,
     officeExpenses: officeExpenses.rows[0].total,
     chitExpenses: chitExpenses.rows[0].total,
     totalExpenses,

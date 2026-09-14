@@ -16,7 +16,7 @@ interface Expense { id: string; category: string; description: string; amount: s
 interface ChitProfitRow { id: string; label: string; fiscal_year_label: string; profit_amount: string; }
 interface SettlementYear { fiscal_year_label: string; santha_donation: string; chit_profit: string; expenses: string; principal: string; profit_6pct: string; }
 interface SettlementData { years: SettlementYear[]; totals: { total_principal: number; total_profit: number; finalSettlementValue: number } }
-interface FundSummary { liveChitCommission: number; chitExpenses: number; officeExpenses: number; totalExpenses: number; incomeViaChit: number }
+interface FundSummary { liveChitIncome: number; chitExpenses: number; officeExpenses: number; totalExpenses: number; incomeViaChit: number }
 
 export default function FundsPage() {
   const { user } = useAuth();
@@ -72,7 +72,7 @@ export default function FundsPage() {
   // these badges actually move when a chit's financial data changes,
   // instead of only reflecting the static/historical slice.
   const expensesTotal = officeExpensesTotal + (fundSummary?.chitExpenses || 0);
-  const chitProfitTotal = historicalChitProfitTotal + (fundSummary?.liveChitCommission || 0);
+  const chitProfitTotal = historicalChitProfitTotal + (fundSummary?.liveChitIncome || 0);
 
   async function handleAddExpense(e: React.FormEvent) {
     e.preventDefault();
@@ -478,10 +478,10 @@ export default function FundsPage() {
               {fundSummary && (
                 <div className="ledger-card p-4 flex items-center justify-between bg-paper/60">
                   <div>
-                    <div className="text-xs uppercase tracking-wide text-ink-muted">Live commission from ongoing chits</div>
-                    <p className="text-xs text-ink-muted mt-0.5">Current chits run through Chit Management - this updates automatically as they progress.</p>
+                    <div className="text-xs uppercase tracking-wide text-ink-muted">Live income from ongoing chits</div>
+                    <p className="text-xs text-ink-muted mt-0.5">Organizer commission plus the Club's own payout when its reserved month comes due - current chits run through Chit Management and update automatically.</p>
                   </div>
-                  <div className="font-tabular text-lg font-bold text-navy">{formatINR(fundSummary.liveChitCommission)}</div>
+                  <div className="font-tabular text-lg font-bold text-navy">{formatINR(fundSummary.liveChitIncome)}</div>
                 </div>
               )}
               <div className="ledger-card overflow-hidden">
