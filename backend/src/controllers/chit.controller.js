@@ -86,6 +86,12 @@ async function assignDraw(req, res) {
   res.json({ success: true });
 }
 
+async function recallDraw(req, res) {
+  const result = await chitService.recallDraw(req.params.id, Number(req.params.monthIndex), req.user.id);
+  await recordAudit({ userId: req.user.id, action: 'CHIT_DRAW_RECALL', entityType: 'Chit', entityId: req.params.id, metadata: { monthIndex: req.params.monthIndex, recalledMemberId: result.recalledMemberId }, ipAddress: req.ip });
+  res.json({ success: true });
+}
+
 async function submitRequest(req, res) {
   await chitService.submitRequest(req.params.id, Number(req.params.monthIndex), req.user.memberId, req.body.type);
   res.json({ success: true });
@@ -110,6 +116,6 @@ async function getLedger(req, res) {
 module.exports = {
   updateRefNumber,
   create, list, getById, deleteChit, addMembers, removeMember, join, leave,
-  getMonthDetail, togglePaid, payForMonth, markAllPaid, assignDraw, submitRequest, cancelRequest,
+  getMonthDetail, togglePaid, payForMonth, markAllPaid, assignDraw, recallDraw, submitRequest, cancelRequest,
   performShuffle, getLedger,
 };

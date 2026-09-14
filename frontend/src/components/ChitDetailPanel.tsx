@@ -43,6 +43,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   const [deleting, setDeleting] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
+  const [recalling, setRecalling] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Tracks whether we've already auto-picked "the current month" for THIS
@@ -225,6 +226,21 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
       loadChit();
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Could not assign draw.');
+    }
+  }
+
+  async function handleRecallDraw() {
+    if (!monthDetail?.drawnByMemberId || recalling) return; // guards against accidental double-submit
+    if (!window.confirm(`Recall ${monthDetail.drawnByName} as the drawer for ${monthDetail.label}? This month will re-open for Assign/Shuffle.`)) return;
+    setError(null);
+    setRecalling(true);
+    try {
+      await client.delete(`/chits/${id}/months/${selectedMonth}/draw`);
+      await Promise.all([loadMonth(selectedMonth), loadChit()]);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Could not recall the drawer.');
+    } finally {
+      setRecalling(false);
     }
   }
 
@@ -523,6 +539,16 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                         className="text-xs bg-navy/10 text-navy px-2.5 py-1 rounded-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {p.isDrawer ? '✓ Assigned' : 'Assign as Drawer'}
+                      </button>
+                    )}
+                    {p.isDrawer && monthDetail.isCurrentMonth && (
+                      <button
+                        onClick={handleRecallDraw}
+                        disabled={recalling}
+                        title="Undo this assignment and re-open the month for Assign/Shuffle."
+                        className="text-xs text-danger underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {recalling ? 'Recalling…' : 'Recall'}
                       </button>
                     )}
                   </div>

@@ -79,6 +79,13 @@ router.patch(
   validate,
   chitController.assignDraw
 );
+router.delete(
+  '/:id/months/:monthIndex/draw',
+  authorize('ADMIN', 'MANAGER'),
+  monthParams,
+  validate,
+  chitController.recallDraw
+);
 router.post(
   '/:id/months/:monthIndex/shuffle',
   authorize('ADMIN', 'MANAGER'),

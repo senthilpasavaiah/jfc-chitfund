@@ -102,6 +102,15 @@ export interface ChitMonthDetail {
   payout: number;
 }
 
+export interface CurrentMonthDrawer {
+  chitId: string;
+  refNumber: string;
+  monthIndex: number;
+  monthLabel: string;
+  drawerName: string | null;
+  assignedVia: 'manual' | 'shuffle' | null;
+}
+
 export interface DashboardSummary {
   totalMembers: number;
   activeMembers: number;
@@ -120,4 +129,5 @@ export interface DashboardSummary {
   currentlyInHand: number;
   accruedProfit: number;
   finalSettlementValue: number;
+  currentMonthDrawers: CurrentMonthDrawer[];
 }

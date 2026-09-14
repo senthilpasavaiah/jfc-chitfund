@@ -53,6 +53,10 @@ router.get('/summary', async (req, res) => {
   // that's why the Expenses card didn't move when a chit's financial data
   // changed, and why it could disagree with the Fund page.
   const fundsSummary = await fundService.summary();
+  // Reads straight from chit_month_data - the exact field Assign/Shuffle/
+  // Recall write to - so this panel can't drift out of sync with the
+  // actual assignment shown on the Chit Detail page.
+  const currentMonthDrawers = await chitService.getCurrentMonthDrawers();
 
   res.json({
     success: true,
@@ -74,6 +78,7 @@ router.get('/summary', async (req, res) => {
       currentlyInHand: fundsSummary.currentlyInHand,
       accruedProfit: fundsSummary.accruedProfit,
       finalSettlementValue: fundsSummary.finalSettlementValue,
+      currentMonthDrawers,
     },
   });
 });

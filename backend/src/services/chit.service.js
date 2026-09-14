@@ -511,6 +511,54 @@ async function assignDraw(chitId, monthIndex, memberId, actingUserId) {
   }
 }
 
+/**
+ * Undoes a mistaken drawer assignment (manual OR shuffle) for the current
+ * month, re-opening it for a fresh Assign/Shuffle. Restricted to the same
+ * current-month window as assignDraw/performShuffle - a past month's
+ * result is final and can't be recalled.
+ */
+async function recallDraw(chitId, monthIndex, actingUserId) {
+  if (monthIndex === CLUB_SLOT_INDEX) {
+    throw ApiError.badRequest("Month 2 is always reserved for Jolly Friends Club - there's no drawer to recall.");
+  }
+  const chit = await getById(chitId);
+  const elapsed = chitMonthsElapsed(chit.start_date, chit.total_months);
+  if (monthIndex !== elapsed) {
+    throw ApiError.badRequest(
+      monthIndex < elapsed
+        ? 'This month has already passed - the drawer can no longer be recalled.'
+        : "This month hasn't opened yet."
+    );
+  }
+  const monthDataByIndex = await ensureMonthData(chit);
+  const md = monthDataByIndex.get(monthIndex);
+  if (!md.drawn_by_member_id) {
+    throw ApiError.badRequest('No drawer is currently assigned for this month.');
+  }
+
+  const previousMemberId = md.drawn_by_member_id;
+  const previousName = await getMemberName(previousMemberId);
+  // Clears the SAME live field Assign/Shuffle write to - this is the one
+  // place the Dashboard's drawer panel and the Chit Detail page both read
+  // from, so recalling here is immediately consistent everywhere with no
+  // separate "state" to fall out of sync.
+  await query(`UPDATE chit_month_data SET drawn_by_member_id = NULL, shuffled = FALSE WHERE id = $1`, [md.id]);
+
+  const monthLabel = chitMonthLabel(chit.start_date, monthIndex);
+  // Closes the loop on the earlier "you were assigned" notification so nothing
+  // stale is left implying that assignment is still active.
+  await notificationService.dispatch({
+    memberId: previousMemberId,
+    channel: 'WHATSAPP',
+    type: 'GENERAL',
+    subject: 'Drawer assignment recalled',
+    body: `${previousName}'s drawer assignment for ${chit.ref_number} - ${monthLabel} was recalled. This month is open for reassignment.`,
+    createdById: actingUserId,
+  });
+
+  return { recalledMemberId: previousMemberId };
+}
+
 async function submitRequest(chitId, monthIndex, memberId, type) {
   if (monthIndex === CLUB_SLOT_INDEX) return;
   const chit = await getById(chitId);
@@ -576,6 +624,39 @@ async function performShuffle(chitId, monthIndex, memberIds, actingUserId) {
   });
 
   return { winnerId, winnerName };
+}
+
+/**
+ * For every ongoing chit, who (if anyone) is this month's drawer - reads
+ * straight from chit_month_data (the exact field assignDraw/performShuffle/
+ * recallDraw write to), so the Dashboard can never show a drawer that's
+ * gone stale relative to the actual assignment.
+ */
+async function getCurrentMonthDrawers() {
+  const { rows: chits } = await query(`SELECT * FROM chits WHERE start_date IS NOT NULL`);
+  const results = [];
+  for (const chit of chits) {
+    if (getChitStatus(chit.start_date, chit.total_months) !== 'ongoing') continue;
+    const elapsed = chitMonthsElapsed(chit.start_date, chit.total_months);
+    if (elapsed === CLUB_SLOT_INDEX || elapsed >= chit.total_months) continue; // no real drawer for the Club's own month
+    const { rows } = await query(
+      `SELECT cmd.drawn_by_member_id, cmd.shuffled, m.name AS drawer_name
+       FROM chit_month_data cmd
+       LEFT JOIN members m ON m.id = cmd.drawn_by_member_id
+       WHERE cmd.chit_id = $1 AND cmd.month_index = $2`,
+      [chit.id, elapsed]
+    );
+    const md = rows[0];
+    results.push({
+      chitId: chit.id,
+      refNumber: chit.ref_number,
+      monthIndex: elapsed,
+      monthLabel: chitMonthLabel(chit.start_date, elapsed),
+      drawerName: md?.drawer_name || null,
+      assignedVia: md?.drawn_by_member_id ? (md.shuffled ? 'shuffle' : 'manual') : null,
+    });
+  }
+  return results;
 }
 
 async function syncAccounting(chitId) {
@@ -782,9 +863,11 @@ module.exports = {
   payForMonth,
   markAllPaidForMonth,
   assignDraw,
+  recallDraw,
   submitRequest,
   cancelRequest,
   performShuffle,
+  getCurrentMonthDrawers,
   getLedger,
   chitCapacity,
   getChitStatus,

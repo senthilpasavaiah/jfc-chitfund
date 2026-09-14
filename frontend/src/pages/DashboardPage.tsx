@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import client from '../api/client';
 import type { DashboardSummary } from '../types';
 
@@ -83,6 +84,34 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {summary.currentMonthDrawers.length > 0 && (
+        <div className="ledger-card p-5">
+          <h3 className="font-medium mb-3">This month's drawers</h3>
+          <div className="divide-y divide-line">
+            {summary.currentMonthDrawers.map((d) => (
+              <Link
+                key={d.chitId}
+                to={`/chits/${d.chitId}`}
+                className="flex items-center justify-between text-sm py-2.5 first:pt-0 last:pb-0 hover:text-navy transition-colors"
+              >
+                <div>
+                  <span className="font-medium">{d.refNumber}</span>
+                  <span className="text-ink-muted"> — {d.monthLabel}</span>
+                </div>
+                {d.drawerName ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="font-medium text-gold-dim">🏆 {d.drawerName}</span>
+                    <span className="text-[10px] uppercase text-ink-muted">{d.assignedVia === 'shuffle' ? '(shuffled)' : '(assigned)'}</span>
+                  </span>
+                ) : (
+                  <span className="text-xs text-ink-muted">Not yet assigned</span>
+                )}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
