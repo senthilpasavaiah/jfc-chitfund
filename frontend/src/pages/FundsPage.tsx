@@ -16,6 +16,7 @@ interface Expense { id: string; category: string; description: string; amount: s
 interface ChitProfitRow { id: string; label: string; fiscal_year_label: string; profit_amount: string; }
 interface SettlementYear { fiscal_year_label: string; santha_donation: string; chit_profit: string; expenses: string; principal: string; profit_6pct: string; }
 interface SettlementData { years: SettlementYear[]; totals: { total_principal: number; total_profit: number; finalSettlementValue: number } }
+interface FundSummary { liveChitCommission: number; chitExpenses: number; officeExpenses: number; totalExpenses: number; incomeViaChit: number }
 
 export default function FundsPage() {
   const { user } = useAuth();
@@ -27,6 +28,7 @@ export default function FundsPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [chitProfit, setChitProfit] = useState<ChitProfitRow[]>([]);
   const [settlement, setSettlement] = useState<SettlementData | null>(null);
+  const [fundSummary, setFundSummary] = useState<FundSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [expForm, setExpForm] = useState({ date: '', category: 'OFFICE', description: '', amount: '' });
@@ -39,18 +41,20 @@ export default function FundsPage() {
 
   async function loadAll() {
     setLoading(true);
-    const [d, s, e, c, st] = await Promise.all([
+    const [d, s, e, c, st, fs] = await Promise.all([
       client.get('/funds/donations'),
       client.get('/funds/santha'),
       client.get('/expenses'),
       client.get('/funds/chit-profit-history'),
       client.get('/funds/settlement'),
+      client.get('/funds/summary'),
     ]);
     setDonations(d.data.data);
     setSantha(s.data.data);
     setExpenses(e.data.data);
     setChitProfit(c.data.data);
     setSettlement(st.data.data);
+    setFundSummary(fs.data.data);
     setLoading(false);
   }
 
@@ -60,8 +64,15 @@ export default function FundsPage() {
 
   const donationTotal = donations.reduce((s, d) => s + Number(d.amount), 0);
   const santhaTotal = santha.reduce((s, x) => s + Number(x.amount), 0);
-  const expensesTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
-  const chitProfitTotal = chitProfit.reduce((s, c) => s + Number(c.profit_amount), 0);
+  const officeExpensesTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
+  const historicalChitProfitTotal = chitProfit.reduce((s, c) => s + Number(c.profit_amount), 0);
+  // Grand totals fold in each ongoing chit's own live accounting
+  // (chit_auto_ledger, synced on every load via GET /funds/summary) on top
+  // of the office-expenses table / historical settled-years import - so
+  // these badges actually move when a chit's financial data changes,
+  // instead of only reflecting the static/historical slice.
+  const expensesTotal = officeExpensesTotal + (fundSummary?.chitExpenses || 0);
+  const chitProfitTotal = historicalChitProfitTotal + (fundSummary?.liveChitCommission || 0);
 
   async function handleAddExpense(e: React.FormEvent) {
     e.preventDefault();
@@ -387,6 +398,15 @@ export default function FundsPage() {
 
           {tab === 'expenses' && (
             <div className="space-y-4">
+              {fundSummary && fundSummary.chitExpenses > 0 && (
+                <div className="ledger-card p-4 flex items-center justify-between bg-paper/60">
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-ink-muted">Chit-related expenses (live)</div>
+                    <p className="text-xs text-ink-muted mt-0.5">Each ongoing chit's own monthly contribution, synced automatically from Chit Management.</p>
+                  </div>
+                  <div className="font-tabular text-lg font-bold text-navy">{formatINR(fundSummary.chitExpenses)}</div>
+                </div>
+              )}
               {canManage && (
                 <form onSubmit={handleAddExpense} className="ledger-card p-5">
                   <h3 className="font-bold mb-3">Add Expense</h3>
@@ -454,24 +474,35 @@ export default function FundsPage() {
           )}
 
           {tab === 'chitProfit' && (
-            <div className="ledger-card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-paper text-ink-muted text-xs uppercase tracking-wide">
-                  <tr><th className="text-left px-4 py-2">Round</th><th className="text-left px-4 py-2">Fiscal Year</th><th className="text-right px-4 py-2">Profit</th></tr>
-                </thead>
-                <tbody>
-                  {chitProfit.map((c) => (
-                    <tr key={c.id} className="border-t border-line">
-                      <td className="px-4 py-2.5">{c.label}</td>
-                      <td className="px-4 py-2.5">{c.fiscal_year_label}</td>
-                      <td className="px-4 py-2.5 text-right font-tabular">{formatINR(Number(c.profit_amount))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="text-xs text-ink-muted px-4 py-3 border-t border-line">
-                Historical pre-app chit rounds — read-only import. New chits run through the Chit Management module instead.
-              </p>
+            <div className="space-y-4">
+              {fundSummary && (
+                <div className="ledger-card p-4 flex items-center justify-between bg-paper/60">
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-ink-muted">Live commission from ongoing chits</div>
+                    <p className="text-xs text-ink-muted mt-0.5">Current chits run through Chit Management - this updates automatically as they progress.</p>
+                  </div>
+                  <div className="font-tabular text-lg font-bold text-navy">{formatINR(fundSummary.liveChitCommission)}</div>
+                </div>
+              )}
+              <div className="ledger-card overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-paper text-ink-muted text-xs uppercase tracking-wide">
+                    <tr><th className="text-left px-4 py-2">Round</th><th className="text-left px-4 py-2">Fiscal Year</th><th className="text-right px-4 py-2">Profit</th></tr>
+                  </thead>
+                  <tbody>
+                    {chitProfit.map((c) => (
+                      <tr key={c.id} className="border-t border-line">
+                        <td className="px-4 py-2.5">{c.label}</td>
+                        <td className="px-4 py-2.5">{c.fiscal_year_label}</td>
+                        <td className="px-4 py-2.5 text-right font-tabular">{formatINR(Number(c.profit_amount))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-xs text-ink-muted px-4 py-3 border-t border-line">
+                  Historical pre-app chit rounds — read-only import. New chits run through the Chit Management module instead (see the live figure above).
+                </p>
+              </div>
             </div>
           )}
         </>

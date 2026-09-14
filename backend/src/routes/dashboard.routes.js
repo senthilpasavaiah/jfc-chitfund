@@ -31,8 +31,6 @@ router.get('/summary', async (req, res) => {
   const closedChits = allChits.filter((c) => c.status === 'completed').length;
 
   const classicTotalResult = await query(`SELECT COALESCE(SUM(amount), 0)::float AS total FROM payments`);
-  const totalExpenseResult = await query(`SELECT COALESCE(SUM(amount), 0)::float AS total FROM expenses`);
-  const totalExpense = totalExpenseResult.rows[0].total;
 
   // Real chit-fund contributions (confirmed via payment proof / manual entry)
   // - the classic `payments` table only covers the older auction-style
@@ -47,6 +45,13 @@ router.get('/summary', async (req, res) => {
   const monthlyCollection = classicPaymentsThisMonth.rows[0].total + chitCollectionsThisMonth.total;
   const totalCollection = classicTotalResult.rows[0].total + chitCollectionsAllTime.total;
 
+  // Single source of truth: fundService.summary() is also what the Fund
+  // page calls (GET /fund/summary), and it now folds in each chit's own
+  // live expense entries (chit_auto_ledger) alongside the office `expenses`
+  // table. Previously this route ran its own separate SUM(amount) FROM
+  // expenses query here, which never saw chit-related expenses at all -
+  // that's why the Expenses card didn't move when a chit's financial data
+  // changed, and why it could disagree with the Fund page.
   const fundsSummary = await fundService.summary();
 
   res.json({
@@ -60,8 +65,8 @@ router.get('/summary', async (req, res) => {
       monthlyExpenses: expensesThisMonth.rows[0].total,
       pendingPayments: { total: pending.rows[0].total, count: pending.rows[0].count },
       totalCollection,
-      totalExpenses: totalExpense,
-      profit: totalCollection - totalExpense,
+      totalExpenses: fundsSummary.totalExpenses,
+      profit: totalCollection - fundsSummary.totalExpenses,
       incomeViaChit: fundsSummary.incomeViaChit,
       incomeViaDonation: fundsSummary.incomeViaDonation,
       incomeViaSantha: fundsSummary.incomeViaSantha,

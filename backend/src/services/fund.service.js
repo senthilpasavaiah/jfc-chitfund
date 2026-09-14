@@ -127,6 +127,19 @@ async function summary() {
   const liveChitCommission = await query(
     `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger WHERE type = 'income' AND category = 'Commission'`
   );
+  // Bug fix: the Dashboard's "Expenses" card and the Fund page's own
+  // Expenses/Chit Profit totals used to be computed independently (in
+  // dashboard.routes.js and FundsPage.tsx respectively) straight from the
+  // plain `expenses` table - neither of them ever looked at
+  // chit_auto_ledger's expense rows (each chit's own monthly contribution
+  // as a participant). So when a chit's live accounting data changed,
+  // office expenses still showed correctly, but the CHIT side of expenses
+  // silently never moved. Computing it once here, and having both pages
+  // consume this same value, is what makes Dashboard and Fund agree.
+  const officeExpenses = await query(`SELECT COALESCE(SUM(amount),0)::float AS total FROM expenses`);
+  const chitExpenses = await query(
+    `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger WHERE type = 'expense'`
+  );
   const settlementTotals = await query(
     `SELECT COALESCE(SUM(principal),0)::float AS principal, COALESCE(SUM(profit_6pct),0)::float AS profit
      FROM settlement_summary`
@@ -137,12 +150,19 @@ async function summary() {
   const incomeViaSantha = santhaTotal.rows[0].total;
   const currentlyInHand = settlementTotals.rows[0].principal;
   const accruedProfit = settlementTotals.rows[0].profit;
+  const totalExpenses = officeExpenses.rows[0].total + chitExpenses.rows[0].total;
 
   return {
     incomeViaChit,
     incomeViaDonation,
     incomeViaSantha,
     totalIncome: incomeViaChit + incomeViaDonation + incomeViaSantha,
+    // Broken out so the UI can show/label each part separately as well as
+    // the combined figure - same pattern already used for incomeViaChit.
+    liveChitCommission: liveChitCommission.rows[0].total,
+    officeExpenses: officeExpenses.rows[0].total,
+    chitExpenses: chitExpenses.rows[0].total,
+    totalExpenses,
     currentlyInHand,
     accruedProfit,
     finalSettlementValue: currentlyInHand + accruedProfit,
