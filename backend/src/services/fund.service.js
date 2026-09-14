@@ -179,6 +179,17 @@ async function summary() {
   };
 }
 
+/**
+ * Thin passthrough so fund.controller.js only ever talks to fundService,
+ * consistent with the rest of this module (lazy require avoids a
+ * module-load-order dependency on chit.service.js, same pattern already
+ * used by syncAllChitLedgers above).
+ */
+async function listLiveChitFinancials() {
+  const chitService = require('./chit.service');
+  return chitService.getLiveChitFinancials();
+}
+
 module.exports = {
   listDonations,
   addDonation,
@@ -190,4 +201,5 @@ module.exports = {
   listSettlement,
   addSettlementYear,
   summary,
+  listLiveChitFinancials,
 };

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import client from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
@@ -17,6 +18,7 @@ interface ChitProfitRow { id: string; label: string; fiscal_year_label: string; 
 interface SettlementYear { fiscal_year_label: string; santha_donation: string; chit_profit: string; expenses: string; principal: string; profit_6pct: string; }
 interface SettlementData { years: SettlementYear[]; totals: { total_principal: number; total_profit: number; finalSettlementValue: number } }
 interface FundSummary { liveChitIncome: number; chitExpenses: number; officeExpenses: number; totalExpenses: number; incomeViaChit: number }
+interface LiveChitFinancial { chitId: string; refNumber: string; status: string; income: number; expense: number; net: number; error: string | null }
 
 export default function FundsPage() {
   const { user } = useAuth();
@@ -29,6 +31,7 @@ export default function FundsPage() {
   const [chitProfit, setChitProfit] = useState<ChitProfitRow[]>([]);
   const [settlement, setSettlement] = useState<SettlementData | null>(null);
   const [fundSummary, setFundSummary] = useState<FundSummary | null>(null);
+  const [liveChitRows, setLiveChitRows] = useState<LiveChitFinancial[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [expForm, setExpForm] = useState({ date: '', category: 'OFFICE', description: '', amount: '' });
@@ -41,13 +44,14 @@ export default function FundsPage() {
 
   async function loadAll() {
     setLoading(true);
-    const [d, s, e, c, st, fs] = await Promise.all([
+    const [d, s, e, c, st, fs, live] = await Promise.all([
       client.get('/funds/donations'),
       client.get('/funds/santha'),
       client.get('/expenses'),
       client.get('/funds/chit-profit-history'),
       client.get('/funds/settlement'),
       client.get('/funds/summary'),
+      client.get('/funds/live-chit-financials'),
     ]);
     setDonations(d.data.data);
     setSantha(s.data.data);
@@ -55,6 +59,7 @@ export default function FundsPage() {
     setChitProfit(c.data.data);
     setSettlement(st.data.data);
     setFundSummary(fs.data.data);
+    setLiveChitRows(live.data.data);
     setLoading(false);
   }
 
@@ -467,6 +472,17 @@ export default function FundsPage() {
                         )}
                       </tr>
                     ))}
+                    {liveChitRows.filter((r) => r.expense > 0).map((r) => (
+                      <tr key={r.chitId} className="border-t border-line bg-paper/40">
+                        <td className="px-4 py-2.5 text-ink-muted">—</td>
+                        <td className="px-4 py-2.5">
+                          <Link to={`/chits/${r.chitId}`} className="text-navy hover:underline">{r.refNumber}</Link>
+                          <span className="text-xs text-ink-muted"> — Club's own contribution (live, auto-booked)</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-tabular">{formatINR(r.expense)}</td>
+                        {canManage && <td className="px-4 py-2.5" />}
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -497,10 +513,19 @@ export default function FundsPage() {
                         <td className="px-4 py-2.5 text-right font-tabular">{formatINR(Number(c.profit_amount))}</td>
                       </tr>
                     ))}
+                    {liveChitRows.filter((r) => r.income > 0).map((r) => (
+                      <tr key={r.chitId} className="border-t border-line bg-paper/40">
+                        <td className="px-4 py-2.5">
+                          <Link to={`/chits/${r.chitId}`} className="text-navy hover:underline">{r.refNumber}</Link>
+                        </td>
+                        <td className="px-4 py-2.5 capitalize text-ink-muted">{r.status} (live)</td>
+                        <td className="px-4 py-2.5 text-right font-tabular">{formatINR(r.income)}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
                 <p className="text-xs text-ink-muted px-4 py-3 border-t border-line">
-                  Historical pre-app chit rounds — read-only import. New chits run through the Chit Management module instead (see the live figure above).
+                  Historical pre-app chit rounds — read-only import. Highlighted rows are live chits from Chit Management, updating automatically as each new month is accounted.
                 </p>
               </div>
             </div>

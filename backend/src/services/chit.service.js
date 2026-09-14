@@ -758,6 +758,33 @@ async function getLedger(chitId) {
   return { entries: rows, income, expense, balance: income - expense };
 }
 
+/**
+ * One row per chit that has live accounting activity (income and/or
+ * expense already booked in chit_auto_ledger) - i.e. every chit run
+ * through Chit Management, as opposed to the pre-app `chit_profit_history`
+ * import. Reused by the Fund page so its Chit Profit / Expenses tabs list
+ * these chits individually instead of only a combined banner total, and
+ * automatically picks up any future chit the moment its first month is
+ * accounted - no code change needed per new chit.
+ */
+async function getLiveChitFinancials() {
+  const allChits = await list({});
+  const rows = await Promise.all(
+    allChits.map(async (c) => {
+      try {
+        const ledger = await getLedger(c.id);
+        return { chitId: c.id, refNumber: c.refNumber, status: c.status, income: ledger.income, expense: ledger.expense, net: ledger.balance, error: null };
+      } catch (err) {
+        // A chit with bad data (e.g. missing value_lakh) shouldn't hide
+        // the whole list - surface it clearly instead of silently
+        // reporting 0, same approach as the Report page.
+        return { chitId: c.id, refNumber: c.refNumber, status: c.status, income: 0, expense: 0, net: 0, error: err.message };
+      }
+    })
+  );
+  return rows.filter((r) => r.income > 0 || r.expense > 0 || r.error);
+}
+
 async function getDetail(chitId, viewer) {
   const chitRow = await getById(chitId);
   const chit = serializeChit(chitRow);
@@ -869,6 +896,7 @@ module.exports = {
   performShuffle,
   getCurrentMonthDrawers,
   getLedger,
+  getLiveChitFinancials,
   chitCapacity,
   getChitStatus,
 };
