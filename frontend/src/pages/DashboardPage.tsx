@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import client from '../api/client';
-import type { DashboardSummary } from '../types';
+import type { DashboardSummary, ManagementSplit } from '../types';
 
 function formatINR(amount: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
@@ -29,6 +29,7 @@ function StatCard({
 
 export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -36,6 +37,14 @@ export default function DashboardPage() {
       .get('/dashboard/summary')
       .then((res) => setSummary(res.data.data))
       .finally(() => setLoading(false));
+    // Fetched and failed independently of the main summary above - if
+    // migration 016 hasn't been run yet, the rest of the Dashboard (which
+    // already worked before this feature existed) must keep working; this
+    // section just quietly doesn't render.
+    client
+      .get('/funds/management-split')
+      .then((res) => setMgmt(res.data.data))
+      .catch(() => setMgmt(null));
   }, []);
 
   if (loading) return <p className="text-ink-muted">Loading dashboard…</p>;
@@ -57,6 +66,35 @@ export default function DashboardPage() {
         <StatCard label="Accrued profit (6% PA)" value={formatINR(summary.accruedProfit)} sub="From settlement, all years" accentBorder="#e6c200" />
         <StatCard label="Final settlement value" value={formatINR(summary.finalSettlementValue)} sub="Principal + Profit" accentBorder="#16a34a" />
       </div>
+
+      {mgmt && (
+        <div>
+          <div className="flex items-baseline gap-2 mb-3">
+            <h3 className="font-medium">New Management</h3>
+            <span className="text-xs text-ink-muted">
+              since {new Date(mgmt.boundaryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 items-stretch">
+            <StatCard
+              label="Opening principal"
+              value={formatINR(mgmt.newManagement.openingBalance)}
+              sub="Handed over from Previous Management"
+              accentBorder="#003366"
+            />
+            <StatCard label="New Santha" value={formatINR(mgmt.newManagement.santha)} accentBorder="#9333ea" />
+            <StatCard label="New Donations" value={formatINR(mgmt.newManagement.donations)} accentBorder="#16a34a" />
+            <StatCard label="New Chit income" value={formatINR(mgmt.newManagement.chitIncome)} accentBorder="#2563eb" />
+            <StatCard label="New expenses" value={formatINR(mgmt.newManagement.expenses)} accentBorder="#c0392b" />
+            <StatCard
+              label="Current fund balance"
+              value={formatINR(mgmt.newManagement.currentBalance)}
+              sub="Opening + Income − Expenses"
+              accentBorder="#e6c200"
+            />
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="ledger-card p-5">

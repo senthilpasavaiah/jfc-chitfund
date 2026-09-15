@@ -102,6 +102,34 @@ export interface ChitMonthDetail {
   payout: number;
 }
 
+export interface ManagementSplit {
+  boundaryDate: string;
+  previousManagement: {
+    santha: number;
+    donation: number;
+    unclassifiedContribution: number;
+    chitProfit: number;
+    expenses: number;
+    principal: number;
+    profit: number;
+    finalSettlement: number;
+    handoverAmount: number;
+    handoverDate: string;
+    handoverSource: string;
+  };
+  newManagement: {
+    openingBalance: number;
+    donations: number;
+    santha: number;
+    chitIncome: number;
+    income: number;
+    officeExpenses: number;
+    chitExpenses: number;
+    expenses: number;
+    currentBalance: number;
+  };
+}
+
 export interface CurrentMonthDrawer {
   chitId: string;
   refNumber: string;

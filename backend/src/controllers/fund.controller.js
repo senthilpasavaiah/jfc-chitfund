@@ -45,6 +45,11 @@ async function listLiveChitFinancials(req, res) {
   res.json({ success: true, data: rows });
 }
 
+async function managementSplit(req, res) {
+  const data = await fundService.getManagementSplit();
+  res.json({ success: true, data });
+}
+
 async function listSettlement(req, res) {
   const data = await fundService.listSettlement();
   res.json({ success: true, data });
@@ -70,6 +75,7 @@ module.exports = {
   updateSantha,
   listChitProfitHistory,
   listLiveChitFinancials,
+  managementSplit,
   listSettlement,
   addSettlementYear,
   summary,

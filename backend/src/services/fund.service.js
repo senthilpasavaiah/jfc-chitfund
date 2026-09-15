@@ -1,6 +1,14 @@
 const { query } = require('../config/db');
 const ApiError = require('../utils/ApiError');
 
+// The permanent management cut-off, per the verified reconciliation
+// (JFC_Santha_FINAL_Separated_Reconciled_2026.xlsx). Everything dated
+// strictly before this belongs to Previous Management; this date and
+// everything after belongs to New Management. This is a business-rule
+// boundary, not a financial figure - it's never used to compute an amount
+// on its own, only to filter which rows fall on which side of it.
+const NEW_MANAGEMENT_START_DATE = '2026-07-01';
+
 /**
  * Ensures every live chit's auto-ledger is up to date before we sum it -
  * cheap for the handful of chits JFC actually runs, and guarantees the
@@ -180,6 +188,100 @@ async function summary() {
 }
 
 /**
+ * Phase 1 of the Previous Management / New Management split (see
+ * JFC_Santha_FINAL_Separated_Reconciled_2026.xlsx).
+ *
+ * Previous Management figures come from the Excel-verified settlement_summary
+ * columns (santha_amount/donation_amount/unclassified_contribution added by
+ * migration 016) plus the same principal/profit totals summary() already
+ * uses - exactly the numbers in the workbook's Final_Reconciliation sheet,
+ * derived from the DB, never hardcoded here.
+ *
+ * New Management figures are the SAME live sources Dashboard/Fund already
+ * use (donations, santha_entries, expenses, chit_auto_ledger), just filtered
+ * to NEW_MANAGEMENT_START_DATE onward - so a rupee here is never also
+ * counted in Previous Management, and vice versa.
+ */
+async function getManagementSplit() {
+  await syncAllChitLedgers();
+
+  const handoverResult = await query(
+    `SELECT amount, handover_date, source, description FROM management_handover ORDER BY handover_date ASC LIMIT 1`
+  );
+  if (handoverResult.rows.length === 0) {
+    throw ApiError.internal('Management handover record is missing - run migration 016_management_handover.sql.');
+  }
+  const handover = handoverResult.rows[0];
+  const openingBalance = Number(handover.amount);
+
+  const settlementSplit = await query(
+    `SELECT
+       COALESCE(SUM(santha_amount),0)::float AS santha,
+       COALESCE(SUM(donation_amount),0)::float AS donation,
+       COALESCE(SUM(unclassified_contribution),0)::float AS unclassified,
+       COALESCE(SUM(chit_profit),0)::float AS chit_profit,
+       COALESCE(SUM(expenses),0)::float AS expenses,
+       COALESCE(SUM(principal),0)::float AS principal,
+       COALESCE(SUM(profit_6pct),0)::float AS profit
+     FROM settlement_summary`
+  );
+  const st = settlementSplit.rows[0];
+
+  const newDonations = await query(
+    `SELECT COALESCE(SUM(amount),0)::float AS total FROM donations WHERE donated_at >= $1`,
+    [NEW_MANAGEMENT_START_DATE]
+  );
+  const newSantha = await query(
+    `SELECT COALESCE(SUM(amount),0)::float AS total FROM santha_entries WHERE entry_date >= $1`,
+    [NEW_MANAGEMENT_START_DATE]
+  );
+  const newChitIncome = await query(
+    `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger WHERE type = 'income' AND entry_date >= $1`,
+    [NEW_MANAGEMENT_START_DATE]
+  );
+  const newExpensesOffice = await query(
+    `SELECT COALESCE(SUM(amount),0)::float AS total FROM expenses WHERE spent_at >= $1`,
+    [NEW_MANAGEMENT_START_DATE]
+  );
+  const newExpensesChit = await query(
+    `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger WHERE type = 'expense' AND entry_date >= $1`,
+    [NEW_MANAGEMENT_START_DATE]
+  );
+
+  const newIncome = newDonations.rows[0].total + newSantha.rows[0].total + newChitIncome.rows[0].total;
+  const newExpenses = newExpensesOffice.rows[0].total + newExpensesChit.rows[0].total;
+  const currentBalance = openingBalance + newIncome - newExpenses;
+
+  return {
+    boundaryDate: NEW_MANAGEMENT_START_DATE,
+    previousManagement: {
+      santha: st.santha,
+      donation: st.donation,
+      unclassifiedContribution: st.unclassified,
+      chitProfit: st.chit_profit,
+      expenses: st.expenses,
+      principal: st.principal,
+      profit: st.profit,
+      finalSettlement: st.principal + st.profit,
+      handoverAmount: openingBalance,
+      handoverDate: handover.handover_date,
+      handoverSource: handover.source,
+    },
+    newManagement: {
+      openingBalance,
+      donations: newDonations.rows[0].total,
+      santha: newSantha.rows[0].total,
+      chitIncome: newChitIncome.rows[0].total,
+      income: newIncome,
+      officeExpenses: newExpensesOffice.rows[0].total,
+      chitExpenses: newExpensesChit.rows[0].total,
+      expenses: newExpenses,
+      currentBalance,
+    },
+  };
+}
+
+/**
  * Thin passthrough so fund.controller.js only ever talks to fundService,
  * consistent with the rest of this module (lazy require avoids a
  * module-load-order dependency on chit.service.js, same pattern already
@@ -189,6 +291,7 @@ async function listLiveChitFinancials() {
   const chitService = require('./chit.service');
   return chitService.getLiveChitFinancials();
 }
+
 
 module.exports = {
   listDonations,
@@ -201,5 +304,6 @@ module.exports = {
   listSettlement,
   addSettlementYear,
   summary,
+  getManagementSplit,
   listLiveChitFinancials,
 };

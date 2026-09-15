@@ -64,6 +64,7 @@ router.patch(
 
 router.get('/chit-profit-history', fundController.listChitProfitHistory);
 router.get('/live-chit-financials', fundController.listLiveChitFinancials);
+router.get('/management-split', fundController.managementSplit);
 
 router.get('/settlement', fundController.listSettlement);
 router.post(
