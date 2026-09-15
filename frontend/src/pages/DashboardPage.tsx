@@ -56,40 +56,22 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-stretch">
-        <StatCard label="Total members" value={String(summary.totalMembers)} sub="Registered in JFC" accentBorder="#FFD700" />
-        <StatCard label="Income via Chit" value={formatINR(summary.incomeViaChit)} sub="Recorded profit, all years" accentBorder="#2563eb" />
-        <StatCard label="Income via Donation" value={formatINR(summary.incomeViaDonation)} sub="From Funds page" accentBorder="#16a34a" />
-        <StatCard label="Income via Santha" value={formatINR(summary.incomeViaSantha)} sub="From Funds page" accentBorder="#9333ea" />
-        <StatCard label="Expenses" value={formatINR(summary.totalExpenses)} sub="From Funds page" accentBorder="#c0392b" />
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-stretch">
-        <StatCard label="Total income" value={formatINR(summary.totalIncome)} sub="Chit + Donation + Santha" accentBorder="#0d9488" />
-        <StatCard label="Currently in hand (principal)" value={formatINR(summary.currentlyInHand)} sub="Income − Expenses" accentBorder="#003366" />
-        <StatCard label="Accrued profit (6% PA)" value={formatINR(summary.accruedProfit)} sub="From settlement, all years" accentBorder="#e6c200" />
-        <StatCard label="Final settlement value" value={formatINR(summary.finalSettlementValue)} sub="Principal + Profit" accentBorder="#16a34a" />
-      </div>
-
       {mgmt && (
         <div className="space-y-2.5">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <h3 className="font-medium text-sm">Management period</h3>
-            <div className="flex rounded-lg border border-line overflow-hidden text-xs font-medium">
-              {([
-                { key: 'previous', label: 'Previous Management' },
-                { key: 'new', label: 'New Management' },
-                { key: 'all', label: 'All Time' },
-              ] as const).map((p) => (
-                <button
-                  key={p.key}
-                  onClick={() => setMgmtView(p.key)}
-                  className={`px-3 py-1.5 transition-colors cursor-pointer ${mgmtView === p.key ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+          <div className="flex rounded-lg border border-line overflow-hidden text-xs font-medium w-fit">
+            {([
+              { key: 'previous', label: 'Previous Management' },
+              { key: 'new', label: 'New Management' },
+              { key: 'all', label: 'All Time' },
+            ] as const).map((p) => (
+              <button
+                key={p.key}
+                onClick={() => setMgmtView(p.key)}
+                className={`px-3 py-1.5 transition-colors cursor-pointer ${mgmtView === p.key ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
 
           {(mgmtView === 'previous' || mgmtView === 'all') && (
