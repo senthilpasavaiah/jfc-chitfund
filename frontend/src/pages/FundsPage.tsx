@@ -26,7 +26,6 @@ interface Expense { id: string; category: string; description: string; amount: s
 interface ChitProfitRow { id: string; label: string; fiscal_year_label: string; profit_amount: string; }
 interface SettlementYear { fiscal_year_label: string; santha_donation: string; chit_profit: string; expenses: string; principal: string; profit_6pct: string; }
 interface SettlementData { years: SettlementYear[]; totals: { total_principal: number; total_profit: number; finalSettlementValue: number } }
-interface FundSummary { liveChitIncome: number; chitExpenses: number; officeExpenses: number; totalExpenses: number; incomeViaChit: number }
 interface LiveChitFinancial { chitId: string; refNumber: string; status: string; income: number; expense: number; net: number; error: string | null }
 
 export default function FundsPage() {
@@ -39,7 +38,6 @@ export default function FundsPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [chitProfit, setChitProfit] = useState<ChitProfitRow[]>([]);
   const [settlement, setSettlement] = useState<SettlementData | null>(null);
-  const [fundSummary, setFundSummary] = useState<FundSummary | null>(null);
   const [liveChitRows, setLiveChitRows] = useState<LiveChitFinancial[]>([]);
   const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
   // Which management period the top summary shows. Defaults to All Time so
@@ -57,13 +55,12 @@ export default function FundsPage() {
 
   async function loadAll() {
     setLoading(true);
-    const [d, s, e, c, st, fs, live] = await Promise.all([
+    const [d, s, e, c, st, live] = await Promise.all([
       client.get('/funds/donations'),
       client.get('/funds/santha'),
       client.get('/expenses'),
       client.get('/funds/chit-profit-history'),
       client.get('/funds/settlement'),
-      client.get('/funds/summary'),
       client.get('/funds/live-chit-financials'),
     ]);
     setDonations(d.data.data);
@@ -71,7 +68,6 @@ export default function FundsPage() {
     setExpenses(e.data.data);
     setChitProfit(c.data.data);
     setSettlement(st.data.data);
-    setFundSummary(fs.data.data);
     setLiveChitRows(live.data.data);
     setLoading(false);
   }
