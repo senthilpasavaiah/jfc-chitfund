@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import client from '../api/client';
+import type { ManagementSplit } from '../types';
 
 type Period = 'monthly' | 'quarterly' | 'half-yearly' | 'yearly' | 'historical' | 'custom';
 
@@ -44,6 +45,14 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = [
 function formatINR(amount: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
 }
+function Metric({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
+  return (
+    <div>
+      <div className="text-xs text-ink-muted">{label}</div>
+      <div className={`font-tabular mt-0.5 ${highlight ? 'text-lg font-bold text-navy' : 'text-sm font-medium'}`}>{formatINR(value)}</div>
+    </div>
+  );
+}
 function toISODate(d: Date) {
   return d.toISOString().slice(0, 10);
 }
@@ -72,6 +81,11 @@ export default function ReportsPage() {
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
+  // Which management period the top summary shows - independent of the
+  // date-range period tabs further down, which keep working exactly as
+  // before for granular reporting.
+  const [mgmtView, setMgmtView] = useState<'previous' | 'new' | 'all'>('all');
 
   const rangeLabel = useMemo(() => resolveRangeLabel(period, customFrom, customTo), [period, customFrom, customTo]);
   const queryParams = period === 'custom' ? { from: customFrom, to: customTo } : { period };
@@ -86,6 +100,17 @@ export default function ReportsPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period, customFrom, customTo]);
+
+  useEffect(() => {
+    // Fetched independently of the date-range report above - if this fails
+    // (e.g. a fresh deploy that hasn't run migration 016 yet), the rest of
+    // the Report page - which already worked before this feature existed -
+    // must keep working; this section just quietly doesn't render.
+    client
+      .get('/funds/management-split')
+      .then((res) => setMgmt(res.data.data))
+      .catch(() => setMgmt(null));
+  }, []);
 
   async function handleDownload(format: 'csv' | 'xlsx' | 'pdf') {
     if (!canQuery) return;
@@ -114,6 +139,68 @@ export default function ReportsPage() {
       <p className="text-ink-muted text-sm">
         Where the Association's money came from, where it was spent, and what's left over — for any time period.
       </p>
+
+      {mgmt && (
+        <div className="space-y-3">
+          <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium w-fit">
+            {([
+              { key: 'previous', label: 'Previous Management' },
+              { key: 'new', label: 'New Management' },
+              { key: 'all', label: 'All Time' },
+            ] as const).map((p) => (
+              <button
+                key={p.key}
+                onClick={() => setMgmtView(p.key)}
+                className={`px-4 py-2 transition-colors cursor-pointer ${mgmtView === p.key ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {(mgmtView === 'previous' || mgmtView === 'all') && (
+            <div className="ledger-card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold">Previous Management</h3>
+                <span className="text-xs text-ink-muted">Up to 30 Jun 2026 — frozen, read-only</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Metric label="Santha" value={mgmt.previousManagement.santha} />
+                <Metric label="Donation" value={mgmt.previousManagement.donation} />
+                <Metric label="Unclassified Contribution" value={mgmt.previousManagement.unclassifiedContribution} />
+                <Metric label="Chit Profit" value={mgmt.previousManagement.chitProfit} />
+                <Metric label="Expenses" value={mgmt.previousManagement.expenses} />
+                <Metric label="Principal" value={mgmt.previousManagement.principal} />
+                <Metric label="Profit (6% p.a.)" value={mgmt.previousManagement.profit} />
+                <Metric label="Final Settlement (Handover)" value={mgmt.previousManagement.finalSettlement} highlight />
+              </div>
+            </div>
+          )}
+
+          {(mgmtView === 'new' || mgmtView === 'all') && (
+            <div className="ledger-card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold">New Management</h3>
+                <span className="text-xs text-ink-muted">Since 1 Jul 2026</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Metric label="Opening Principal" value={mgmt.newManagement.openingBalance} />
+                <Metric label="New Santha" value={mgmt.newManagement.santha} />
+                <Metric label="New Donations" value={mgmt.newManagement.donations} />
+                <Metric label="New Chit Income" value={mgmt.newManagement.chitIncome} />
+                <Metric label="New Expenses" value={mgmt.newManagement.expenses} />
+                <Metric label="Current Balance" value={mgmt.newManagement.currentBalance} highlight />
+              </div>
+            </div>
+          )}
+
+          {mgmtView === 'all' && (
+            <p className="text-xs text-ink-muted px-1">
+              Previous and New Management are shown separately above — {formatINR(mgmt.previousManagement.finalSettlement)} is New Management's opening balance, not counted a second time as income.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="ledger-card p-4 space-y-3">
         <div className="flex flex-wrap items-center gap-3">
