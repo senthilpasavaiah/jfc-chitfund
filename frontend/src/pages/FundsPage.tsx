@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import client from '../api/client';
+import type { ManagementSplit } from '../types';
 import { useAuth } from '../context/AuthContext';
 
 function formatINR(amount: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+}
+function Metric({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
+  return (
+    <div>
+      <div className="text-xs text-ink-muted">{label}</div>
+      <div className={`font-tabular mt-0.5 ${highlight ? 'text-lg font-bold text-navy' : 'text-sm font-medium'}`}>{formatINR(value)}</div>
+    </div>
+  );
 }
 function toDateInput(v: string | null) {
   if (!v) return '';
@@ -32,6 +41,10 @@ export default function FundsPage() {
   const [settlement, setSettlement] = useState<SettlementData | null>(null);
   const [fundSummary, setFundSummary] = useState<FundSummary | null>(null);
   const [liveChitRows, setLiveChitRows] = useState<LiveChitFinancial[]>([]);
+  const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
+  // Which management period the top summary shows. Defaults to All Time so
+  // nothing looks hidden the first time someone opens this page.
+  const [period, setPeriod] = useState<'previous' | 'new' | 'all'>('all');
   const [loading, setLoading] = useState(true);
 
   const [expForm, setExpForm] = useState({ date: '', category: 'OFFICE', description: '', amount: '' });
@@ -65,6 +78,14 @@ export default function FundsPage() {
 
   useEffect(() => {
     loadAll();
+    // Fetched independently of loadAll() above - if this fails (e.g. a
+    // fresh deploy that hasn't run migration 016 yet), the rest of the Fund
+    // page - which already worked before this feature existed - must keep
+    // working; the period selector just quietly doesn't render.
+    client
+      .get('/funds/management-split')
+      .then((res) => setMgmt(res.data.data))
+      .catch(() => setMgmt(null));
   }, []);
 
   const donationTotal = donations.reduce((s, d) => s + Number(d.amount), 0);
@@ -203,6 +224,68 @@ export default function FundsPage() {
   return (
     <div className="space-y-6">
       <p className="text-ink-muted text-sm">Donation, Santha, Expenses, historical Chit profit, and the Final Settlement ledger.</p>
+
+      {mgmt && (
+        <div className="space-y-3">
+          <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium w-fit">
+            {([
+              { key: 'previous', label: 'Previous Management' },
+              { key: 'new', label: 'New Management' },
+              { key: 'all', label: 'All Time' },
+            ] as const).map((p) => (
+              <button
+                key={p.key}
+                onClick={() => setPeriod(p.key)}
+                className={`px-4 py-2 transition-colors cursor-pointer ${period === p.key ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {(period === 'previous' || period === 'all') && (
+            <div className="ledger-card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold">Previous Management</h3>
+                <span className="text-xs text-ink-muted">Up to 30 Jun 2026 — frozen, read-only</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Metric label="Santha" value={mgmt.previousManagement.santha} />
+                <Metric label="Donation" value={mgmt.previousManagement.donation} />
+                <Metric label="Unclassified Contribution" value={mgmt.previousManagement.unclassifiedContribution} />
+                <Metric label="Chit Profit" value={mgmt.previousManagement.chitProfit} />
+                <Metric label="Expenses" value={mgmt.previousManagement.expenses} />
+                <Metric label="Principal" value={mgmt.previousManagement.principal} />
+                <Metric label="Profit (6% p.a.)" value={mgmt.previousManagement.profit} />
+                <Metric label="Final Settlement (Handover)" value={mgmt.previousManagement.finalSettlement} highlight />
+              </div>
+            </div>
+          )}
+
+          {(period === 'new' || period === 'all') && (
+            <div className="ledger-card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold">New Management</h3>
+                <span className="text-xs text-ink-muted">Since 1 Jul 2026</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Metric label="Opening Principal" value={mgmt.newManagement.openingBalance} />
+                <Metric label="New Santha" value={mgmt.newManagement.santha} />
+                <Metric label="New Donations" value={mgmt.newManagement.donations} />
+                <Metric label="New Chit Income" value={mgmt.newManagement.chitIncome} />
+                <Metric label="New Expenses" value={mgmt.newManagement.expenses} />
+                <Metric label="Current Balance" value={mgmt.newManagement.currentBalance} highlight />
+              </div>
+            </div>
+          )}
+
+          {period === 'all' && (
+            <p className="text-xs text-ink-muted px-1">
+              Previous and New Management are shown separately above — {formatINR(mgmt.previousManagement.finalSettlement)} is New Management's opening balance, not counted a second time as income.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium">
