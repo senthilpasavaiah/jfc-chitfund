@@ -107,8 +107,13 @@ async function buildReport({ period, from, to }) {
   const liveChitExpense = chitRows.reduce((s, c) => s + c.expense, 0);
 
   // --- Historical (pre-app) chit rounds - net profit only, no per-entry
-  // date to filter by, so only surfaced in the All-time view. ---
-  const historyRows = isAllTime ? await fundService.listChitProfitHistory() : [];
+  // date to filter by, so only surfaced when the query is either unbounded
+  // (All-time) or entirely confined to before the New Management cutover
+  // (a "Previous Management" style query) - never for a range that extends
+  // into New Management, so it can never leak into that view.
+  const includeHistoricalChitProfit =
+    isAllTime || (range.to && new Date(range.to) < new Date(fundService.NEW_MANAGEMENT_START_DATE));
+  const historyRows = includeHistoricalChitProfit ? await fundService.listChitProfitHistory() : [];
   const historicalChitIncome = historyRows.reduce((s, r) => s + Number(r.profit_amount), 0);
   const historicalChitRows = historyRows.map((r) => ({
     type: 'historical',

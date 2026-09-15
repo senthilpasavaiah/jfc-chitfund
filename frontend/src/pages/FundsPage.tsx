@@ -88,17 +88,38 @@ export default function FundsPage() {
       .catch(() => setMgmt(null));
   }, []);
 
-  const donationTotal = donations.reduce((s, d) => s + Number(d.amount), 0);
-  const santhaTotal = santha.reduce((s, x) => s + Number(x.amount), 0);
-  const officeExpensesTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
-  const historicalChitProfitTotal = chitProfit.reduce((s, c) => s + Number(c.profit_amount), 0);
-  // Grand totals fold in each ongoing chit's own live accounting
-  // (chit_auto_ledger, synced on every load via GET /funds/summary) on top
-  // of the office-expenses table / historical settled-years import - so
-  // these badges actually move when a chit's financial data changes,
-  // instead of only reflecting the static/historical slice.
-  const expensesTotal = officeExpensesTotal + (fundSummary?.chitExpenses || 0);
-  const chitProfitTotal = historicalChitProfitTotal + (fundSummary?.liveChitIncome || 0);
+  // Boundary used to split every list below by management period - same
+  // date the backend's getManagementSplit() uses, so a row here is never
+  // classified differently than it is in the summary cards above.
+  const boundary = mgmt?.boundaryDate || '2026-07-01';
+  const inPeriod = (dateStr: string | null) => {
+    if (period === 'all') return true;
+    if (!dateStr) return period === 'previous'; // no date on record - treat as historical, never silently drop it
+    return period === 'new' ? dateStr >= boundary : dateStr < boundary;
+  };
+  const donationsInPeriod = donations.filter((d) => inPeriod(d.donated_at));
+  const santhaInPeriod = santha.filter((x) => inPeriod(x.entry_date));
+  const expensesInPeriod = expenses.filter((e) => inPeriod(e.spent_at));
+  // chit_profit_history has no date column at all - it's the read-only
+  // pre-app import, so by definition every row is Previous Management.
+  const chitProfitInPeriod = period === 'new' ? [] : chitProfit;
+  // Every row here comes from a chit created through Chit Management,
+  // which only exists from the cutover onward - by definition, New
+  // Management.
+  const liveChitRowsInPeriod = period === 'previous' ? [] : liveChitRows;
+
+  const donationTotal = donationsInPeriod.reduce((s, d) => s + Number(d.amount), 0);
+  const santhaTotal = santhaInPeriod.reduce((s, x) => s + Number(x.amount), 0);
+  const officeExpensesTotal = expensesInPeriod.reduce((s, e) => s + Number(e.amount), 0);
+  const historicalChitProfitTotal = chitProfitInPeriod.reduce((s, c) => s + Number(c.profit_amount), 0);
+  const liveChitIncomeInPeriod = liveChitRowsInPeriod.reduce((s, r) => s + r.income, 0);
+  const liveChitExpenseInPeriod = liveChitRowsInPeriod.reduce((s, r) => s + r.expense, 0);
+  // Grand totals fold in each ongoing chit's own live accounting on top of
+  // the office-expenses table / historical settled-years import, filtered
+  // to the SAME selected period as everything else on this page - so these
+  // badges never disagree with the rows actually shown below them.
+  const expensesTotal = officeExpensesTotal + liveChitExpenseInPeriod;
+  const chitProfitTotal = historicalChitProfitTotal + liveChitIncomeInPeriod;
 
   async function handleAddExpense(e: React.FormEvent) {
     e.preventDefault();
@@ -312,6 +333,12 @@ export default function FundsPage() {
         <>
           {tab === 'settlement' && settlement && (
             <div className="space-y-4">
+              {period === 'new' ? (
+                <p className="text-sm text-ink-muted ledger-card p-5">
+                  Settlement is a Previous Management concept — closed books per fiscal year, all of which are before the 1 Jul 2026 cutover. New Management hasn't been through a year-end settlement yet; switch to "Previous Management" or "All Time" to see this history.
+                </p>
+              ) : (
+                <>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="ledger-card p-5">
                   <div className="text-xs uppercase tracking-wide text-ink-muted">Total Principal</div>
@@ -353,11 +380,18 @@ export default function FundsPage() {
                 </table>
               </div>
               <p className="text-xs text-ink-muted">Historical years are a fixed ledger import; totals above are always summed live, never hardcoded.</p>
+                </>
+              )}
             </div>
           )}
 
           {tab === 'donation' && (
             <div className="space-y-4">
+              {period !== 'all' && (
+                <p className="text-xs text-ink-muted">
+                  Showing: <strong>{period === 'new' ? 'New Management (from 1 Jul 2026)' : 'Previous Management (up to 30 Jun 2026)'}</strong> — switch the selector above to see other periods.
+                </p>
+              )}
               {canManage && (
                 <form onSubmit={handleAddDonation} className="ledger-card p-5">
                   <h3 className="font-bold mb-3">Add Donation Entry</h3>
@@ -385,7 +419,7 @@ export default function FundsPage() {
                     <tr><th className="text-left px-4 py-2">Date</th><th className="text-left px-4 py-2">Member</th><th className="text-right px-4 py-2">Amount</th>{canManage && <th className="text-right px-4 py-2">Action</th>}</tr>
                   </thead>
                   <tbody>
-                    {donations.map((d) => (
+                    {donationsInPeriod.map((d) => (
                       <tr key={d.id} className="border-t border-line">
                         {editingId === d.id ? (
                           <>
@@ -419,6 +453,11 @@ export default function FundsPage() {
 
           {tab === 'santha' && (
             <div className="space-y-4">
+              {period !== 'all' && (
+                <p className="text-xs text-ink-muted">
+                  Showing: <strong>{period === 'new' ? 'New Management (from 1 Jul 2026)' : 'Previous Management (up to 30 Jun 2026)'}</strong> — switch the selector above to see other periods.
+                </p>
+              )}
               {canManage && (
                 <form onSubmit={handleAddSantha} className="ledger-card p-5">
                   <h3 className="font-bold mb-3">Add Santha Entry</h3>
@@ -450,7 +489,7 @@ export default function FundsPage() {
                     <tr><th className="text-left px-4 py-2">Date</th><th className="text-left px-4 py-2">Member</th><th className="text-left px-4 py-2">Round</th><th className="text-right px-4 py-2">Amount</th>{canManage && <th className="text-right px-4 py-2">Action</th>}</tr>
                   </thead>
                   <tbody>
-                    {santha.map((s) => (
+                    {santhaInPeriod.map((s) => (
                       <tr key={s.id} className="border-t border-line">
                         {editingId === s.id ? (
                           <>
@@ -486,13 +525,18 @@ export default function FundsPage() {
 
           {tab === 'expenses' && (
             <div className="space-y-4">
-              {fundSummary && fundSummary.chitExpenses > 0 && (
+              {period !== 'all' && (
+                <p className="text-xs text-ink-muted">
+                  Showing: <strong>{period === 'new' ? 'New Management (from 1 Jul 2026)' : 'Previous Management (up to 30 Jun 2026)'}</strong> — switch the selector above to see other periods.
+                </p>
+              )}
+              {liveChitExpenseInPeriod > 0 && (
                 <div className="ledger-card p-4 flex items-center justify-between bg-paper/60">
                   <div>
                     <div className="text-xs uppercase tracking-wide text-ink-muted">Chit-related expenses (live)</div>
                     <p className="text-xs text-ink-muted mt-0.5">Each ongoing chit's own monthly contribution, synced automatically from Chit Management.</p>
                   </div>
-                  <div className="font-tabular text-lg font-bold text-navy">{formatINR(fundSummary.chitExpenses)}</div>
+                  <div className="font-tabular text-lg font-bold text-navy">{formatINR(liveChitExpenseInPeriod)}</div>
                 </div>
               )}
               {canManage && (
@@ -529,7 +573,7 @@ export default function FundsPage() {
                     <tr><th className="text-left px-4 py-2">Date</th><th className="text-left px-4 py-2">Description</th><th className="text-right px-4 py-2">Amount</th>{canManage && <th className="text-right px-4 py-2">Action</th>}</tr>
                   </thead>
                   <tbody>
-                    {expenses.map((e) => (
+                    {expensesInPeriod.map((e) => (
                       <tr key={e.id} className="border-t border-line">
                         {editingId === e.id ? (
                           <>
@@ -555,7 +599,7 @@ export default function FundsPage() {
                         )}
                       </tr>
                     ))}
-                    {liveChitRows.filter((r) => r.expense > 0).map((r) => (
+                    {liveChitRowsInPeriod.filter((r) => r.expense > 0).map((r) => (
                       <tr key={r.chitId} className="border-t border-line bg-paper/40">
                         <td className="px-4 py-2.5 text-ink-muted">—</td>
                         <td className="px-4 py-2.5">
@@ -574,13 +618,18 @@ export default function FundsPage() {
 
           {tab === 'chitProfit' && (
             <div className="space-y-4">
-              {fundSummary && (
+              {period !== 'all' && (
+                <p className="text-xs text-ink-muted">
+                  Showing: <strong>{period === 'new' ? 'New Management (from 1 Jul 2026)' : 'Previous Management (up to 30 Jun 2026)'}</strong> — switch the selector above to see other periods.
+                </p>
+              )}
+              {liveChitIncomeInPeriod > 0 && (
                 <div className="ledger-card p-4 flex items-center justify-between bg-paper/60">
                   <div>
                     <div className="text-xs uppercase tracking-wide text-ink-muted">Live income from ongoing chits</div>
                     <p className="text-xs text-ink-muted mt-0.5">Organizer commission plus the Club's own payout when its reserved month comes due - current chits run through Chit Management and update automatically.</p>
                   </div>
-                  <div className="font-tabular text-lg font-bold text-navy">{formatINR(fundSummary.liveChitIncome)}</div>
+                  <div className="font-tabular text-lg font-bold text-navy">{formatINR(liveChitIncomeInPeriod)}</div>
                 </div>
               )}
               <div className="ledger-card overflow-hidden">
@@ -589,14 +638,14 @@ export default function FundsPage() {
                     <tr><th className="text-left px-4 py-2">Round</th><th className="text-left px-4 py-2">Fiscal Year</th><th className="text-right px-4 py-2">Profit</th></tr>
                   </thead>
                   <tbody>
-                    {chitProfit.map((c) => (
+                    {chitProfitInPeriod.map((c) => (
                       <tr key={c.id} className="border-t border-line">
                         <td className="px-4 py-2.5">{c.label}</td>
                         <td className="px-4 py-2.5">{c.fiscal_year_label}</td>
                         <td className="px-4 py-2.5 text-right font-tabular">{formatINR(Number(c.profit_amount))}</td>
                       </tr>
                     ))}
-                    {liveChitRows.filter((r) => r.income > 0).map((r) => (
+                    {liveChitRowsInPeriod.filter((r) => r.income > 0).map((r) => (
                       <tr key={r.chitId} className="border-t border-line bg-paper/40">
                         <td className="px-4 py-2.5">
                           <Link to={`/chits/${r.chitId}`} className="text-navy hover:underline">{r.refNumber}</Link>

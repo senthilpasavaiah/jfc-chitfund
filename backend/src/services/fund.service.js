@@ -294,6 +294,7 @@ async function listLiveChitFinancials() {
 
 
 module.exports = {
+  NEW_MANAGEMENT_START_DATE,
   listDonations,
   addDonation,
   updateDonation,

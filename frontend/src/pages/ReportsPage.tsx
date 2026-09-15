@@ -112,6 +112,30 @@ export default function ReportsPage() {
       .catch(() => setMgmt(null));
   }, []);
 
+  // Drives the SAME date-range engine the period tabs below already use
+  // (the one that correctly filters every chit/donation/santha/expense row
+  // by its real date - see report.service.js's inRange()) instead of
+  // building a second, separate filtering system. Picking a management
+  // period here just sets a custom range under the hood, so the whole rest
+  // of the page - Association Income/Expenses, Chit-wise Summary, exports -
+  // automatically stays correctly scoped to it.
+  useEffect(() => {
+    const boundary = mgmt?.boundaryDate || '2026-07-01';
+    if (mgmtView === 'new') {
+      setPeriod('custom');
+      setCustomFrom(boundary);
+      setCustomTo(toISODate(new Date()));
+    } else if (mgmtView === 'previous') {
+      const dayBefore = new Date(boundary);
+      dayBefore.setDate(dayBefore.getDate() - 1);
+      setPeriod('custom');
+      setCustomFrom('2000-01-01');
+      setCustomTo(toISODate(dayBefore));
+    } else {
+      setPeriod('historical');
+    }
+  }, [mgmtView, mgmt]);
+
   async function handleDownload(format: 'csv' | 'xlsx' | 'pdf') {
     if (!canQuery) return;
     setDownloading(format);
