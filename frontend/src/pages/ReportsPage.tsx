@@ -75,12 +75,8 @@ function chitLabel(c: ChitSummaryRow) {
 }
 
 export default function ReportsPage() {
-  // Initialized directly to the New Management range (matching mgmtView's
-  // default below) instead of starting at 'historical' and correcting via
-  // effect - starting wrong and correcting afterward meant TWO fetches
-  // raced on mount (an all-time one and a July-2026-onward one), and
-  // whichever happened to resolve LAST silently won, sometimes leaving the
-  // page showing all-time data despite "New Management" being selected.
+  // Defaults directly to the New Management range (July 2026 onward) so
+  // the normal/default view never mixes in pre-July data.
   const [period, setPeriod] = useState<Period>('custom');
   const [customFrom, setCustomFrom] = useState('2026-07-01');
   const [customTo, setCustomTo] = useState(toISODate(new Date()));
@@ -88,16 +84,44 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
-  // Which management period the top summary shows - independent of the
-  // date-range period tabs further down, which keep working exactly as
-  // before for granular reporting. Defaults to New Management so the
-  // normal/default view only ever shows July 2026 onward data - Previous
-  // Management is opt-in, never mixed in automatically.
-  const [mgmtView, setMgmtView] = useState<'previous' | 'new' | 'all'>('new');
 
   const rangeLabel = useMemo(() => resolveRangeLabel(period, customFrom, customTo), [period, customFrom, customTo]);
   const queryParams = period === 'custom' ? { from: customFrom, to: customTo } : { period };
   const canQuery = period !== 'custom' || (customFrom && customTo);
+
+  // The Previous/New/All Time buttons below are just shortcuts that set
+  // period/customFrom/customTo directly - there's deliberately no separate
+  // "which management period is selected" state to track. A previous
+  // version kept one, and it could silently go stale/disagree with the
+  // actual displayed data whenever someone used the "This Month"/"Custom
+  // Range" tabs directly afterward (the shortcut buttons stayed highlighted
+  // even though the report was showing different data). Deriving the
+  // highlight straight from the real query values means the buttons can
+  // never lie about what's actually on screen.
+  const boundary = mgmt?.boundaryDate || '2026-07-01';
+  const dayBeforeBoundary = useMemo(() => {
+    const d = new Date(boundary);
+    d.setDate(d.getDate() - 1);
+    return toISODate(d);
+  }, [boundary]);
+  const today = useMemo(() => toISODate(new Date()), []);
+  const isPreviousActive = period === 'custom' && customFrom === '2000-01-01' && customTo === dayBeforeBoundary;
+  const isNewActive = period === 'custom' && customFrom === boundary && customTo === today;
+  const isAllActive = period === 'historical';
+
+  function selectPrevious() {
+    setPeriod('custom');
+    setCustomFrom('2000-01-01');
+    setCustomTo(dayBeforeBoundary);
+  }
+  function selectNew() {
+    setPeriod('custom');
+    setCustomFrom(boundary);
+    setCustomTo(today);
+  }
+  function selectAll() {
+    setPeriod('historical');
+  }
 
   useEffect(() => {
     if (!canQuery) return;
@@ -119,30 +143,6 @@ export default function ReportsPage() {
       .then((res) => setMgmt(res.data.data))
       .catch(() => setMgmt(null));
   }, []);
-
-  // Drives the SAME date-range engine the period tabs below already use
-  // (the one that correctly filters every chit/donation/santha/expense row
-  // by its real date - see report.service.js's inRange()) instead of
-  // building a second, separate filtering system. Picking a management
-  // period here just sets a custom range under the hood, so the whole rest
-  // of the page - Association Income/Expenses, Chit-wise Summary, exports -
-  // automatically stays correctly scoped to it.
-  useEffect(() => {
-    const boundary = mgmt?.boundaryDate || '2026-07-01';
-    if (mgmtView === 'new') {
-      setPeriod('custom');
-      setCustomFrom(boundary);
-      setCustomTo(toISODate(new Date()));
-    } else if (mgmtView === 'previous') {
-      const dayBefore = new Date(boundary);
-      dayBefore.setDate(dayBefore.getDate() - 1);
-      setPeriod('custom');
-      setCustomFrom('2000-01-01');
-      setCustomTo(toISODate(dayBefore));
-    } else {
-      setPeriod('historical');
-    }
-  }, [mgmtView, mgmt]);
 
   async function handleDownload(format: 'csv' | 'xlsx' | 'pdf') {
     if (!canQuery) return;
@@ -176,21 +176,21 @@ export default function ReportsPage() {
         <div className="space-y-3">
           <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium w-fit">
             {([
-              { key: 'previous', label: 'Previous Management' },
-              { key: 'new', label: 'New Management' },
-              { key: 'all', label: 'All Time' },
+              { key: 'previous', label: 'Previous Management', active: isPreviousActive, onClick: selectPrevious },
+              { key: 'new', label: 'New Management', active: isNewActive, onClick: selectNew },
+              { key: 'all', label: 'All Time', active: isAllActive, onClick: selectAll },
             ] as const).map((p) => (
               <button
                 key={p.key}
-                onClick={() => setMgmtView(p.key)}
-                className={`px-4 py-2 transition-colors cursor-pointer ${mgmtView === p.key ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
+                onClick={p.onClick}
+                className={`px-4 py-2 transition-colors cursor-pointer ${p.active ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
               >
                 {p.label}
               </button>
             ))}
           </div>
 
-          {(mgmtView === 'previous' || mgmtView === 'all') && (
+          {(isPreviousActive || isAllActive) && (
             <div className="ledger-card p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold">Previous Management</h3>
@@ -209,7 +209,7 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {(mgmtView === 'new' || mgmtView === 'all') && (
+          {(isNewActive || isAllActive) && (
             <div className="ledger-card p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold">New Management</h3>
@@ -226,9 +226,14 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {mgmtView === 'all' && (
+          {isAllActive && (
             <p className="text-xs text-ink-muted px-1">
               Previous and New Management are shown separately above — {formatINR(mgmt.previousManagement.finalSettlement)} is New Management's opening balance, not counted a second time as income.
+            </p>
+          )}
+          {!isPreviousActive && !isNewActive && !isAllActive && (
+            <p className="text-xs text-ink-muted px-1">
+              Showing "{PERIOD_OPTIONS.find((o) => o.value === period)?.label}" from the date filters below — pick a shortcut above to jump to a management period instead.
             </p>
           )}
         </div>
