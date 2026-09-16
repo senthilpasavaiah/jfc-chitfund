@@ -75,8 +75,14 @@ function chitLabel(c: ChitSummaryRow) {
 }
 
 export default function ReportsPage() {
-  const [period, setPeriod] = useState<Period>('historical');
-  const [customFrom, setCustomFrom] = useState('');
+  // Initialized directly to the New Management range (matching mgmtView's
+  // default below) instead of starting at 'historical' and correcting via
+  // effect - starting wrong and correcting afterward meant TWO fetches
+  // raced on mount (an all-time one and a July-2026-onward one), and
+  // whichever happened to resolve LAST silently won, sometimes leaving the
+  // page showing all-time data despite "New Management" being selected.
+  const [period, setPeriod] = useState<Period>('custom');
+  const [customFrom, setCustomFrom] = useState('2026-07-01');
   const [customTo, setCustomTo] = useState(toISODate(new Date()));
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
