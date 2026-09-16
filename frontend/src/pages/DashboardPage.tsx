@@ -33,10 +33,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   // Same three-way selector as the Fund and Report pages, reading the same
   // backend data - so whichever period is picked here shows the identical
-  // figures a user would see there too. Defaults to 'new' so the normal/
-  // default view only ever shows July 2026 onward data - Previous
-  // Management is opt-in, never mixed in automatically.
-  const [mgmtView, setMgmtView] = useState<'previous' | 'new' | 'all'>('new');
+  // figures a user would see there too. Nothing is selected by default -
+  // the user decides what to see, nothing is assumed for them.
+  const [mgmtView, setMgmtView] = useState<'previous' | 'new' | 'all' | null>(null);
 
   useEffect(() => {
     client
@@ -68,7 +67,7 @@ export default function DashboardPage() {
             ] as const).map((p) => (
               <button
                 key={p.key}
-                onClick={() => setMgmtView(p.key)}
+                onClick={() => setMgmtView((cur) => (cur === p.key ? null : p.key))}
                 className={`px-3 py-1.5 transition-colors cursor-pointer ${mgmtView === p.key ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
               >
                 {p.label}

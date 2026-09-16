@@ -56,9 +56,34 @@ function Metric({ label, value, highlight }: { label: string; value: number; hig
 function toISODate(d: Date) {
   return d.toISOString().slice(0, 10);
 }
+const PERIOD_MONTHS: Record<string, number> = { monthly: 1, quarterly: 3, 'half-yearly': 6, yearly: 12 };
+/** Mirrors report.service.js's resolveRange() date math (not its business
+ * rules) purely so a Period preset can be intersected with a Management
+ * selection on the frontend before sending an explicit range. */
+function periodBound(period: Period | null, customFrom: string, customTo: string): { from: string | null; to: string | null } {
+  if (!period || period === 'historical') return { from: null, to: null };
+  if (period === 'custom') return { from: customFrom || null, to: customTo || null };
+  const months = PERIOD_MONTHS[period];
+  const to = new Date();
+  const from = new Date();
+  from.setMonth(from.getMonth() - months);
+  return { from: toISODate(from), to: toISODate(to) };
+}
+function managementBound(management: 'previous' | 'new' | null, boundary: string, dayBeforeBoundary: string, today: string): { from: string | null; to: string | null } {
+  if (management === 'previous') return { from: null, to: dayBeforeBoundary };
+  if (management === 'new') return { from: boundary, to: today };
+  return { from: null, to: null };
+}
+/** Later `from` wins, earlier `to` wins - null on a side means "no constraint from this side". */
+function intersectBounds(a: { from: string | null; to: string | null }, b: { from: string | null; to: string | null }) {
+  const froms = [a.from, b.from].filter((v): v is string => !!v);
+  const tos = [a.to, b.to].filter((v): v is string => !!v);
+  return { from: froms.length ? froms.sort().pop()! : null, to: tos.length ? tos.sort()[0] : null };
+}
 /** Mirrors the backend's own period->date-range resolution, purely for display. */
-function resolveRangeLabel(period: Period, from: string, to: string): string {
+function resolveRangeLabel(period: Period | null, from: string, to: string): string {
   const today = new Date();
+  if (!period) return 'No period selected';
   if (period === 'custom') {
     if (!from || !to) return 'Select a start and end date';
     return `${new Date(from).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} → ${new Date(to).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`;
@@ -75,29 +100,23 @@ function chitLabel(c: ChitSummaryRow) {
 }
 
 export default function ReportsPage() {
-  // Defaults directly to the New Management range (July 2026 onward) so
-  // the normal/default view never mixes in pre-July data.
-  const [period, setPeriod] = useState<Period>('custom');
-  const [customFrom, setCustomFrom] = useState('2026-07-01');
-  const [customTo, setCustomTo] = useState(toISODate(new Date()));
+  // Nothing selected by default on either axis - the user decides what to
+  // see, nothing is assumed for them.
+  const [management, setManagement] = useState<'previous' | 'new' | null>(null);
+  const [period, setPeriod] = useState<Period | null>(null);
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [report, setReport] = useState<ReportData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
 
-  const rangeLabel = useMemo(() => resolveRangeLabel(period, customFrom, customTo), [period, customFrom, customTo]);
-  const queryParams = period === 'custom' ? { from: customFrom, to: customTo } : { period };
-  const canQuery = period !== 'custom' || (customFrom && customTo);
-
-  // The Previous/New/All Time buttons below are just shortcuts that set
-  // period/customFrom/customTo directly - there's deliberately no separate
-  // "which management period is selected" state to track. A previous
-  // version kept one, and it could silently go stale/disagree with the
-  // actual displayed data whenever someone used the "This Month"/"Custom
-  // Range" tabs directly afterward (the shortcut buttons stayed highlighted
-  // even though the report was showing different data). Deriving the
-  // highlight straight from the real query values means the buttons can
-  // never lie about what's actually on screen.
+  // Management (Previous/New) and Period (This Month/.../Custom Range) are
+  // two independent selections - each its own state, each freely
+  // selectable or de-selectable, never forcing or overriding the other.
+  // When only one is picked, its own bound applies. When both are picked,
+  // they're intersected (e.g. Previous Management + Custom Range = whichever
+  // is narrower). When neither is picked, there's nothing to query yet.
   const boundary = mgmt?.boundaryDate || '2026-07-01';
   const dayBeforeBoundary = useMemo(() => {
     const d = new Date(boundary);
@@ -105,33 +124,43 @@ export default function ReportsPage() {
     return toISODate(d);
   }, [boundary]);
   const today = useMemo(() => toISODate(new Date()), []);
-  const isPreviousActive = period === 'custom' && customFrom === '2000-01-01' && customTo === dayBeforeBoundary;
-  const isNewActive = period === 'custom' && customFrom === boundary && customTo === today;
-  const isAllActive = period === 'historical';
 
-  function selectPrevious() {
-    setPeriod('custom');
-    setCustomFrom('2000-01-01');
-    setCustomTo(dayBeforeBoundary);
+  const customIncomplete = period === 'custom' && (!customFrom || !customTo);
+  const canQuery = (management !== null || period !== null) && !customIncomplete;
+
+  let queryParams: Record<string, string> = {};
+  if (canQuery) {
+    if (management === null) {
+      // No management filter selected - behaves exactly as it always has.
+      queryParams = period === 'custom' ? { from: customFrom, to: customTo } : { period: period as Period };
+    } else {
+      const eff = intersectBounds(
+        periodBound(period, customFrom, customTo),
+        managementBound(management, boundary, dayBeforeBoundary, today)
+      );
+      queryParams = { from: eff.from || '2000-01-01', to: eff.to || today };
+    }
   }
-  function selectNew() {
-    setPeriod('custom');
-    setCustomFrom(boundary);
-    setCustomTo(today);
+
+  function toggleManagement(value: 'previous' | 'new') {
+    setManagement((cur) => (cur === value ? null : value));
   }
-  function selectAll() {
-    setPeriod('historical');
+  function togglePeriod(value: Period) {
+    setPeriod((cur) => (cur === value ? null : value));
   }
 
   useEffect(() => {
-    if (!canQuery) return;
+    if (!canQuery) {
+      setReport(null);
+      return;
+    }
     setLoading(true);
     client.get('/reports', { params: queryParams }).then((res) => {
       setReport(res.data.data);
       setLoading(false);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period, customFrom, customTo]);
+  }, [management, period, customFrom, customTo]);
 
   useEffect(() => {
     // Fetched independently of the date-range report above - if this fails
@@ -156,7 +185,7 @@ export default function ReportsPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `jfc-association-report-${period === 'custom' ? `${customFrom}_to_${customTo}` : period}.${format}`;
+      a.download = `jfc-association-report-${period === 'custom' ? `${customFrom}_to_${customTo}` : period || 'filtered'}.${format}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -176,21 +205,20 @@ export default function ReportsPage() {
         <div className="space-y-3">
           <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium w-fit">
             {([
-              { key: 'previous', label: 'Previous Management', active: isPreviousActive, onClick: selectPrevious },
-              { key: 'new', label: 'New Management', active: isNewActive, onClick: selectNew },
-              { key: 'all', label: 'All Time', active: isAllActive, onClick: selectAll },
+              { key: 'previous', label: 'Previous Management' },
+              { key: 'new', label: 'New Management' },
             ] as const).map((p) => (
               <button
                 key={p.key}
-                onClick={p.onClick}
-                className={`px-4 py-2 transition-colors cursor-pointer ${p.active ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
+                onClick={() => toggleManagement(p.key)}
+                className={`px-4 py-2 transition-colors cursor-pointer ${management === p.key ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
               >
                 {p.label}
               </button>
             ))}
           </div>
 
-          {(isPreviousActive || isAllActive) && (
+          {management === 'previous' && (
             <div className="ledger-card p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold">Previous Management</h3>
@@ -209,7 +237,7 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {(isNewActive || isAllActive) && (
+          {management === 'new' && (
             <div className="ledger-card p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold">New Management</h3>
@@ -226,14 +254,9 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {isAllActive && (
+          {management !== null && period !== null && (
             <p className="text-xs text-ink-muted px-1">
-              Previous and New Management are shown separately above — {formatINR(mgmt.previousManagement.finalSettlement)} is New Management's opening balance, not counted a second time as income.
-            </p>
-          )}
-          {!isPreviousActive && !isNewActive && !isAllActive && (
-            <p className="text-xs text-ink-muted px-1">
-              Showing "{PERIOD_OPTIONS.find((o) => o.value === period)?.label}" from the date filters below — pick a shortcut above to jump to a management period instead.
+              Combined with the date filter below ({rangeLabel}) — showing whichever is narrower.
             </p>
           )}
         </div>
@@ -245,7 +268,7 @@ export default function ReportsPage() {
             {PERIOD_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
-                onClick={() => setPeriod(opt.value)}
+                onClick={() => togglePeriod(opt.value)}
                 className={`px-3 py-2 whitespace-nowrap cursor-pointer transition-colors ${period === opt.value ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
               >
                 {opt.label}
@@ -280,11 +303,23 @@ export default function ReportsPage() {
         ) : null}
 
         <p className="text-xs text-ink-muted pt-1 border-t border-line">
-          Showing: <strong className="text-ink">{rangeLabel}</strong>
+          Showing: <strong className="text-ink">
+            {!canQuery
+              ? 'Nothing selected yet'
+              : period
+              ? rangeLabel
+              : queryParams.from && queryParams.to
+              ? `${new Date(queryParams.from).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} → ${new Date(queryParams.to).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
+              : rangeLabel}
+          </strong>
         </p>
       </div>
 
-      {loading ? (
+      {!canQuery ? (
+        <p className="text-ink-muted ledger-card p-5 text-center text-sm">
+          Pick a Management period and/or a date range above to see the report.
+        </p>
+      ) : loading ? (
         <p className="text-ink-muted">Loading…</p>
       ) : !report ? (
         <p className="text-danger">Could not load report.</p>

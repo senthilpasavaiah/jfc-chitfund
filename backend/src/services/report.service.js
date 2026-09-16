@@ -68,10 +68,16 @@ async function buildReport({ period, from, to }) {
   const isAllTime = !range.from || !range.to;
 
   // --- Live chits: reuse each chit's own auto-booked ledger (chit.service),
-  // the same data source as its "Income & Expenses" panel. ---
+  // the same data source as its "Income & Expenses" panel. A chit that
+  // hadn't even started by the end of the selected range has nothing to do
+  // with that period, so it's excluded from the summary entirely - not
+  // just hidden in the UI - rather than listing it as a padded zero row.
   const allChits = await chitService.list({});
+  const applicableChits = range.to
+    ? allChits.filter((c) => !c.startDate || new Date(c.startDate) <= range.to)
+    : allChits;
   const chitRows = await Promise.all(
-    allChits.map(async (c) => {
+    applicableChits.map(async (c) => {
       try {
         const ledger = await chitService.getLedger(c.id);
         const entries = ledger.entries.filter((e) => inRange(e.entry_date, range));

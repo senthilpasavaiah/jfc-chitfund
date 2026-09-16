@@ -41,10 +41,12 @@ export default function FundsPage() {
   const [liveChitRows, setLiveChitRows] = useState<LiveChitFinancial[]>([]);
   const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
   // Which management period the top summary shows. Defaults to New
-  // Management so the normal/default view only ever shows July 2026
-  // onward data - Previous Management is opt-in, never mixed in
-  // automatically.
-  const [period, setPeriod] = useState<'previous' | 'new' | 'all'>('new');
+  // Which management period the top summary shows. Nothing is selected by
+  // default - the user decides what to see, nothing is assumed for them.
+  // The sub-tabs below default to showing everything (same as 'all') until
+  // a specific period is picked, since there's no sensible "blank" state
+  // for a data-listing tab the way there is for a summary card.
+  const [period, setPeriod] = useState<'previous' | 'new' | 'all' | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [expForm, setExpForm] = useState({ date: '', category: 'OFFICE', description: '', amount: '' });
@@ -91,7 +93,7 @@ export default function FundsPage() {
   // classified differently than it is in the summary cards above.
   const boundary = mgmt?.boundaryDate || '2026-07-01';
   const inPeriod = (dateStr: string | null) => {
-    if (period === 'all') return true;
+    if (period === 'all' || period === null) return true; // nothing/"all" selected - show everything, unfiltered
     if (!dateStr) return period === 'previous'; // no date on record - treat as historical, never silently drop it
     return period === 'new' ? dateStr >= boundary : dateStr < boundary;
   };
@@ -254,7 +256,7 @@ export default function FundsPage() {
             ] as const).map((p) => (
               <button
                 key={p.key}
-                onClick={() => setPeriod(p.key)}
+                onClick={() => setPeriod((cur) => (cur === p.key ? null : p.key))}
                 className={`px-4 py-2 transition-colors cursor-pointer ${period === p.key ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
               >
                 {p.label}
