@@ -148,6 +148,7 @@ export default function ReportsPage() {
   function togglePeriod(value: Period) {
     setPeriod((cur) => (cur === value ? null : value));
   }
+  const rangeLabel = useMemo(() => resolveRangeLabel(period, customFrom, customTo), [period, customFrom, customTo]);
 
   useEffect(() => {
     if (!canQuery) {
