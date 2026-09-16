@@ -33,8 +33,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   // Same three-way selector as the Fund and Report pages, reading the same
   // backend data - so whichever period is picked here shows the identical
-  // figures a user would see there too.
-  const [mgmtView, setMgmtView] = useState<'previous' | 'new' | 'all'>('all');
+  // figures a user would see there too. Defaults to 'new' so the normal/
+  // default view only ever shows July 2026 onward data - Previous
+  // Management is opt-in, never mixed in automatically.
+  const [mgmtView, setMgmtView] = useState<'previous' | 'new' | 'all'>('new');
 
   useEffect(() => {
     client
@@ -77,7 +79,8 @@ export default function DashboardPage() {
           {(mgmtView === 'previous' || mgmtView === 'all') && (
             <div>
               <div className="text-xs text-ink-muted mb-1.5">Previous Management — up to 30 Jun 2026</div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-stretch">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 items-stretch">
+                <StatCard label="Number of members" value={String(summary.totalMembers)} accentBorder="#FFD700" />
                 <StatCard label="Santha" value={formatINR(mgmt.previousManagement.santha)} accentBorder="#9333ea" />
                 <StatCard label="Donation" value={formatINR(mgmt.previousManagement.donation)} accentBorder="#16a34a" />
                 <StatCard label="Unclassified" value={formatINR(mgmt.previousManagement.unclassifiedContribution)} accentBorder="#6b7280" />
@@ -112,6 +115,8 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {mgmtView !== 'previous' && (
+        <>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="ledger-card p-4">
           <div className="flex items-center justify-between mb-2">
@@ -165,6 +170,8 @@ export default function DashboardPage() {
             ))}
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

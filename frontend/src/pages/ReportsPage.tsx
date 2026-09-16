@@ -84,8 +84,10 @@ export default function ReportsPage() {
   const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
   // Which management period the top summary shows - independent of the
   // date-range period tabs further down, which keep working exactly as
-  // before for granular reporting.
-  const [mgmtView, setMgmtView] = useState<'previous' | 'new' | 'all'>('all');
+  // before for granular reporting. Defaults to New Management so the
+  // normal/default view only ever shows July 2026 onward data - Previous
+  // Management is opt-in, never mixed in automatically.
+  const [mgmtView, setMgmtView] = useState<'previous' | 'new' | 'all'>('new');
 
   const rangeLabel = useMemo(() => resolveRangeLabel(period, customFrom, customTo), [period, customFrom, customTo]);
   const queryParams = period === 'custom' ? { from: customFrom, to: customTo } : { period };

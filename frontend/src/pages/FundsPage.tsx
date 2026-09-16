@@ -40,9 +40,11 @@ export default function FundsPage() {
   const [settlement, setSettlement] = useState<SettlementData | null>(null);
   const [liveChitRows, setLiveChitRows] = useState<LiveChitFinancial[]>([]);
   const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
-  // Which management period the top summary shows. Defaults to All Time so
-  // nothing looks hidden the first time someone opens this page.
-  const [period, setPeriod] = useState<'previous' | 'new' | 'all'>('all');
+  // Which management period the top summary shows. Defaults to New
+  // Management so the normal/default view only ever shows July 2026
+  // onward data - Previous Management is opt-in, never mixed in
+  // automatically.
+  const [period, setPeriod] = useState<'previous' | 'new' | 'all'>('new');
   const [loading, setLoading] = useState(true);
 
   const [expForm, setExpForm] = useState({ date: '', category: 'OFFICE', description: '', amount: '' });
