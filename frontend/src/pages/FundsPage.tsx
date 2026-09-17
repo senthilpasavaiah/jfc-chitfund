@@ -30,7 +30,7 @@ interface LiveChitFinancial { chitId: string; refNumber: string; status: string;
 
 export default function FundsPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<'donation' | 'santha' | 'expenses' | 'chitProfit' | 'settlement'>('settlement');
+  const [tab, setTab] = useState<'donation' | 'santha' | 'expenses' | 'chitProfit' | 'settlement' | null>(null);
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
   const [donations, setDonations] = useState<Donation[]>([]);
@@ -40,13 +40,9 @@ export default function FundsPage() {
   const [settlement, setSettlement] = useState<SettlementData | null>(null);
   const [liveChitRows, setLiveChitRows] = useState<LiveChitFinancial[]>([]);
   const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
-  // Which management period the top summary shows. Defaults to New
-  // Which management period the top summary shows. Nothing is selected by
-  // default - the user decides what to see, nothing is assumed for them.
-  // The sub-tabs below default to showing everything (same as 'all') until
-  // a specific period is picked, since there's no sensible "blank" state
-  // for a data-listing tab the way there is for a summary card.
-  const [period, setPeriod] = useState<'previous' | 'new' | 'all' | null>(null);
+  // Which management period the top summary and the tabs' data are
+  // filtered by. Defaults to New Management whenever the page opens.
+  const [period, setPeriod] = useState<'previous' | 'new' | 'all' | null>('new');
   const [loading, setLoading] = useState(true);
 
   const [expForm, setExpForm] = useState({ date: '', category: 'OFFICE', description: '', amount: '' });
@@ -93,7 +89,7 @@ export default function FundsPage() {
   // classified differently than it is in the summary cards above.
   const boundary = mgmt?.boundaryDate || '2026-07-01';
   const inPeriod = (dateStr: string | null) => {
-    if (period === 'all' || period === null) return true; // nothing/"all" selected - show everything, unfiltered
+    if (period === null) return true; // nothing selected - show everything, unfiltered
     if (!dateStr) return period === 'previous'; // no date on record - treat as historical, never silently drop it
     return period === 'new' ? dateStr >= boundary : dateStr < boundary;
   };
@@ -252,7 +248,6 @@ export default function FundsPage() {
             {([
               { key: 'previous', label: 'Previous Management' },
               { key: 'new', label: 'New Management' },
-              { key: 'all', label: 'All Time' },
             ] as const).map((p) => (
               <button
                 key={p.key}
@@ -329,13 +324,17 @@ export default function FundsPage() {
 
       {loading ? (
         <p className="text-ink-muted">Loading…</p>
+      ) : tab === null ? (
+        <p className="text-ink-muted ledger-card p-5 text-center text-sm">
+          Pick a tab above — Settlement, Donation, Santha, Expenses, or Chit Profit — to view its details.
+        </p>
       ) : (
         <>
           {tab === 'settlement' && settlement && (
             <div className="space-y-4">
               {period === 'new' ? (
                 <p className="text-sm text-ink-muted ledger-card p-5">
-                  Settlement is a Previous Management concept — closed books per fiscal year, all of which are before the 1 Jul 2026 cutover. New Management hasn't been through a year-end settlement yet; switch to "Previous Management" or "All Time" to see this history.
+                  Settlement is a Previous Management concept — closed books per fiscal year, all of which are before the 1 Jul 2026 cutover. New Management hasn't been through a year-end settlement yet; switch to "Previous Management" to see this history.
                 </p>
               ) : (
                 <>

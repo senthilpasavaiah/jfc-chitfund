@@ -31,11 +31,10 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
   const [loading, setLoading] = useState(true);
-  // Same three-way selector as the Fund and Report pages, reading the same
-  // backend data - so whichever period is picked here shows the identical
-  // figures a user would see there too. Nothing is selected by default -
-  // the user decides what to see, nothing is assumed for them.
-  const [mgmtView, setMgmtView] = useState<'previous' | 'new' | 'all' | null>(null);
+  // Same selector as the Fund and Report pages, reading the same backend
+  // data - so whichever period is picked here shows the identical figures
+  // a user would see there too. New Management is selected by default.
+  const [mgmtView, setMgmtView] = useState<'previous' | 'new' | 'all' | null>('new');
 
   useEffect(() => {
     client
@@ -63,7 +62,6 @@ export default function DashboardPage() {
             {([
               { key: 'previous', label: 'Previous Management' },
               { key: 'new', label: 'New Management' },
-              { key: 'all', label: 'All Time' },
             ] as const).map((p) => (
               <button
                 key={p.key}

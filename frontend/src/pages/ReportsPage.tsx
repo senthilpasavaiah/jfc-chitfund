@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import client from '../api/client';
 import type { ManagementSplit } from '../types';
 
@@ -38,7 +38,6 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = [
   { value: 'quarterly', label: 'Last 3 Months' },
   { value: 'half-yearly', label: 'Last 6 Months' },
   { value: 'yearly', label: 'Last 12 Months' },
-  { value: 'historical', label: 'All-time' },
   { value: 'custom', label: 'Custom Range' },
 ];
 
@@ -100,9 +99,9 @@ function chitLabel(c: ChitSummaryRow) {
 }
 
 export default function ReportsPage() {
-  // Nothing selected by default on either axis - the user decides what to
-  // see, nothing is assumed for them.
-  const [management, setManagement] = useState<'previous' | 'new' | null>(null);
+  // New Management is selected by default whenever this page opens; no
+  // other filter/tab is pre-selected — the user picks those explicitly.
+  const [management, setManagement] = useState<'previous' | 'new' | null>('new');
   const [period, setPeriod] = useState<Period | null>(null);
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
@@ -110,6 +109,15 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
+  // Once a Custom Range fetch succeeds, the From/To inputs are cleared back
+  // to blank (per product requirement) but the report and this label stay
+  // on screen — this remembers what was actually queried, purely for
+  // display, independent of the now-blank input state.
+  const [appliedCustomRange, setAppliedCustomRange] = useState<{ from: string; to: string } | null>(null);
+  // Set right before we programmatically blank the custom-date inputs after
+  // a successful fetch, so the effect below doesn't mistake that blanking
+  // for the user clearing the fields and wipe the just-displayed report.
+  const skipNextClearRef = useRef(false);
 
   // Management (Previous/New) and Period (This Month/.../Custom Range) are
   // two independent selections - each its own state, each freely
@@ -117,6 +125,8 @@ export default function ReportsPage() {
   // When only one is picked, its own bound applies. When both are picked,
   // they're intersected (e.g. Previous Management + Custom Range = whichever
   // is narrower). When neither is picked, there's nothing to query yet.
+  // Previous Management is frozen, view-only data (shown in its own summary
+  // card above) - it never drives this date-filtered report section.
   const boundary = mgmt?.boundaryDate || '2026-07-01';
   const dayBeforeBoundary = useMemo(() => {
     const d = new Date(boundary);
@@ -126,7 +136,7 @@ export default function ReportsPage() {
   const today = useMemo(() => toISODate(new Date()), []);
 
   const customIncomplete = period === 'custom' && (!customFrom || !customTo);
-  const canQuery = (management !== null || period !== null) && !customIncomplete;
+  const canQuery = management !== 'previous' && (management !== null || period !== null) && !customIncomplete;
 
   let queryParams: Record<string, string> = {};
   if (canQuery) {
@@ -147,11 +157,23 @@ export default function ReportsPage() {
   }
   function togglePeriod(value: Period) {
     setPeriod((cur) => (cur === value ? null : value));
+    setAppliedCustomRange(null);
   }
-  const rangeLabel = useMemo(() => resolveRangeLabel(period, customFrom, customTo), [period, customFrom, customTo]);
+  const rangeLabel = useMemo(() => {
+    if (period === 'custom' && !customFrom && !customTo && appliedCustomRange) {
+      return resolveRangeLabel(period, appliedCustomRange.from, appliedCustomRange.to);
+    }
+    return resolveRangeLabel(period, customFrom, customTo);
+  }, [period, customFrom, customTo, appliedCustomRange]);
 
   useEffect(() => {
     if (!canQuery) {
+      if (skipNextClearRef.current) {
+        // We just blanked the custom-date fields ourselves after a
+        // successful fetch - keep the report on screen, don't clear it.
+        skipNextClearRef.current = false;
+        return;
+      }
       setReport(null);
       return;
     }
@@ -159,9 +181,18 @@ export default function ReportsPage() {
     client.get('/reports', { params: queryParams }).then((res) => {
       setReport(res.data.data);
       setLoading(false);
+      if (period === 'custom' && customFrom && customTo) {
+        // Custom-period data has displayed successfully - reset the date
+        // fields to blank so the user must pick fresh dates next time.
+        setAppliedCustomRange({ from: customFrom, to: customTo });
+        skipNextClearRef.current = true;
+        setCustomFrom('');
+        setCustomTo('');
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [management, period, customFrom, customTo]);
+
 
   useEffect(() => {
     // Fetched independently of the date-range report above - if this fails
@@ -255,7 +286,7 @@ export default function ReportsPage() {
             </div>
           )}
 
-          {management !== null && period !== null && (
+          {management === 'new' && period !== null && (
             <p className="text-xs text-ink-muted px-1">
               Combined with the date filter below ({rangeLabel}) — showing whichever is narrower.
             </p>
@@ -263,6 +294,12 @@ export default function ReportsPage() {
         </div>
       )}
 
+      {management === 'previous' ? (
+        <p className="text-ink-muted ledger-card p-5 text-center text-sm">
+          Previous Management figures are shown above and are frozen, view-only records. Switch to New Management to filter by date range.
+        </p>
+      ) : (
+      <>
       <div className="ledger-card p-4 space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium">
@@ -363,7 +400,7 @@ export default function ReportsPage() {
             </table>
             {!report.meta.historicalRecordsIncluded && (
               <p className="px-4 py-2 text-xs text-ink-muted border-t border-line">
-                Historical (pre-app) chit profit isn't dated per-record, so it only appears under "All-time".
+                Historical (pre-app) chit profit isn't dated per-record, so it doesn't appear in date-filtered reports.
               </p>
             )}
           </div>
@@ -428,6 +465,8 @@ export default function ReportsPage() {
             </p>
           </div>
         </>
+      )}
+      </>
       )}
     </div>
   );
