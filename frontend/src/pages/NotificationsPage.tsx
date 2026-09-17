@@ -49,6 +49,7 @@ export default function NotificationsPage() {
 
       {!error && notifications && notifications.length > 0 && (
         <div className="ledger-card overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-navy text-white text-xs uppercase tracking-wide">
               <tr>
@@ -94,6 +95,7 @@ export default function NotificationsPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
