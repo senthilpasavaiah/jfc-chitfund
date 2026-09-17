@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import client from '../api/client';
-import type { NotificationRow, ManagementSplit } from '../types';
+import type { NotificationRow } from '../types';
 
 const CHANNEL_LABEL: Record<string, string> = { SMS: 'SMS', WHATSAPP: 'WhatsApp', EMAIL: 'Email', PUSH: 'Push' };
 const STATUS_STYLES: Record<string, string> = {
@@ -11,7 +11,6 @@ const STATUS_STYLES: Record<string, string> = {
 
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<NotificationRow[] | null>(null);
-  const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -19,16 +18,7 @@ export default function NotificationsPage() {
       .get('/notifications')
       .then((res) => setNotifications(res.data.data))
       .catch((err) => setError(err?.response?.status === 403 ? "You don't have access to view notifications." : 'Could not load notifications.'));
-    // Independent of the list above - if this fails (e.g. before migration
-    // 016 is run), the Management column just falls back to not shown
-    // rather than breaking the whole page.
-    client
-      .get('/funds/management-split')
-      .then((res) => setMgmt(res.data.data))
-      .catch(() => setMgmt(null));
   }, []);
-
-  const boundary = mgmt?.boundaryDate || '2026-07-01';
 
   return (
     <div className="space-y-4">
@@ -58,17 +48,10 @@ export default function NotificationsPage() {
                 <th className="text-left px-4 py-3">Channel</th>
                 <th className="text-left px-4 py-3">Message</th>
                 <th className="text-left px-4 py-3">Status</th>
-                <th className="text-left px-4 py-3">Management</th>
               </tr>
             </thead>
             <tbody>
               {notifications.map((n, idx) => {
-                // Same cut-off the rest of the app uses (Dashboard/Fund/
-                // Report) - a notification logged on/after 1 Jul 2026
-                // belongs to New Management, everything before it to
-                // Previous Management. Purely a label here; it doesn't
-                // change what was logged or move it between tables.
-                const isNew = n.created_at >= boundary;
                 return (
                   <tr key={n.id} className={`border-t border-line ${idx % 2 === 0 ? 'bg-white' : 'bg-paper/50'}`}>
                     <td className="px-4 py-3 text-ink-muted whitespace-nowrap">
@@ -83,11 +66,6 @@ export default function NotificationsPage() {
                     <td className="px-4 py-3">
                       <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[n.status] || 'bg-line text-ink-muted'}`}>
                         {n.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${isNew ? 'bg-navy/10 text-navy' : 'bg-line text-ink-muted'}`}>
-                        {isNew ? 'New Management' : 'Previous Management'}
                       </span>
                     </td>
                   </tr>
