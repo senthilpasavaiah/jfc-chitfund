@@ -9,10 +9,26 @@ function chitLabel(c) {
   return c.type === 'historical' ? `${c.refNumber} (${c.status})` : c.refNumber;
 }
 
+/** A human-readable description of what date range the report covers -
+ * used instead of the raw internal `period` keyword, which is either a
+ * generic label ('custom') or wouldn't exist at all for a Management-driven
+ * export (Previous/New Management, or the two intersected with a date
+ * filter) - those always resolve to an explicit range with no matching
+ * named period. */
+function periodLabel(report) {
+  if (report.period === 'historical') return 'All-time';
+  if (report.range?.from && report.range?.to) {
+    const from = new Date(report.range.from).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    const to = new Date(report.range.to).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    return `${from} to ${to}`;
+  }
+  return report.period;
+}
+
 function toCSV(report) {
   const lines = [];
   lines.push('Jolly Friends Club - Association Financial Report');
-  lines.push(`Period,${report.period}`);
+  lines.push(`Period,${periodLabel(report)}`);
   lines.push('');
 
   lines.push('Association Income');
@@ -51,7 +67,7 @@ async function toExcel(report) {
   const summarySheet = workbook.addWorksheet('Summary');
   summarySheet.columns = [{ header: 'Metric', key: 'metric', width: 34 }, { header: 'Value', key: 'value', width: 20 }];
   summarySheet.addRows([
-    { metric: 'Period', value: report.period },
+    { metric: 'Period', value: periodLabel(report) },
     { metric: '', value: '' },
     { metric: 'Association Income', value: '' },
     ...report.incomeBreakdown.map((r) => ({ metric: r.label, value: r.amount })),
@@ -96,7 +112,7 @@ function toPDF(report) {
     doc.on('error', reject);
 
     doc.fontSize(18).text('Jolly Friends Club — Association Financial Report', { align: 'center' });
-    doc.fontSize(10).fillColor('#666').text(`Period: ${report.period}`, { align: 'center' });
+    doc.fontSize(10).fillColor('#666').text(`Period: ${periodLabel(report)}`, { align: 'center' });
     doc.moveDown(1.5);
 
     doc.fontSize(13).fillColor('#000').text('Association Income');

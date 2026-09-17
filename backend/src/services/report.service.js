@@ -151,7 +151,13 @@ async function buildReport({ period, from, to }) {
   const netProfit = totalIncome - totalExpenses;
 
   return {
-    period: period || 'historical',
+    // Bug fix (B5): this used to always fall back to 'historical' whenever
+    // an explicit from/to was used without a matching named `period` (e.g.
+    // every Management-driven export/view) - mislabeling a bounded query
+    // as "All-time" in the exported CSV/XLSX/PDF. Falling back to 'custom'
+    // for any other bounded range, and pairing it with the real `range`
+    // dates below, is what lets reportExport.js show an accurate label.
+    period: period || (isAllTime ? 'historical' : 'custom'),
     range: { from: range.from, to: range.to },
 
     association: {
