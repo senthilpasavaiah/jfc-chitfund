@@ -139,6 +139,18 @@ export interface CurrentMonthDrawer {
   assignedVia: 'manual' | 'shuffle' | null;
 }
 
+export interface NotificationRow {
+  id: string;
+  member_id: string | null;
+  member_name: string | null;
+  channel: 'SMS' | 'WHATSAPP' | 'EMAIL' | 'PUSH';
+  type: string;
+  subject: string | null;
+  body: string;
+  status: 'PENDING' | 'LOGGED' | 'FAILED';
+  created_at: string;
+}
+
 export interface DashboardSummary {
   totalMembers: number;
   activeMembers: number;

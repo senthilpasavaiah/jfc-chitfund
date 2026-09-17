@@ -33,4 +33,17 @@ async function listForMember(memberId, { limit = 50, offset = 0 } = {}) {
   return rows;
 }
 
-module.exports = { dispatch, listForMember };
+/** Admin-only view of every logged notification, newest first. */
+async function list({ limit = 100, offset = 0 } = {}) {
+  const { rows } = await query(
+    `SELECT n.*, m.name AS member_name
+     FROM notifications n
+     LEFT JOIN members m ON m.id = n.member_id
+     ORDER BY n.created_at DESC
+     LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+  return rows;
+}
+
+module.exports = { dispatch, listForMember, list };
