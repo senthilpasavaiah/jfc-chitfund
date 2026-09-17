@@ -114,6 +114,12 @@ export default function ReportsPage() {
   // on screen — this remembers what was actually queried, purely for
   // display, independent of the now-blank input state.
   const [appliedCustomRange, setAppliedCustomRange] = useState<{ from: string; to: string } | null>(null);
+  // The exact params used for the last successful fetch. Captured
+  // separately from the live `queryParams` below so a Custom Range report
+  // (and its download buttons) keep working after the date fields reset
+  // themselves back to blank - at that point `canQuery`/`queryParams` no
+  // longer reflect what's actually on screen, but this does.
+  const [lastQueryParams, setLastQueryParams] = useState<Record<string, string> | null>(null);
   // Set right before we programmatically blank the custom-date inputs after
   // a successful fetch, so the effect below doesn't mistake that blanking
   // for the user clearing the fields and wipe the just-displayed report.
@@ -154,9 +160,14 @@ export default function ReportsPage() {
 
   function toggleManagement(value: 'previous' | 'new') {
     setManagement((cur) => (cur === value ? null : value));
+    setReport(null);
+    setLastQueryParams(null);
+    setAppliedCustomRange(null);
   }
   function togglePeriod(value: Period) {
     setPeriod((cur) => (cur === value ? null : value));
+    setReport(null);
+    setLastQueryParams(null);
     setAppliedCustomRange(null);
   }
   const rangeLabel = useMemo(() => {
@@ -175,11 +186,14 @@ export default function ReportsPage() {
         return;
       }
       setReport(null);
+      setLastQueryParams(null);
       return;
     }
     setLoading(true);
-    client.get('/reports', { params: queryParams }).then((res) => {
+    const paramsForThisFetch = queryParams;
+    client.get('/reports', { params: paramsForThisFetch }).then((res) => {
       setReport(res.data.data);
+      setLastQueryParams(paramsForThisFetch);
       setLoading(false);
       if (period === 'custom' && customFrom && customTo) {
         // Custom-period data has displayed successfully - reset the date
@@ -206,18 +220,23 @@ export default function ReportsPage() {
   }, []);
 
   async function handleDownload(format: 'csv' | 'xlsx' | 'pdf') {
-    if (!canQuery) return;
+    const effectiveParams = canQuery ? queryParams : lastQueryParams;
+    if (!effectiveParams) return;
     setDownloading(format);
     try {
       const res = await client.get('/reports/export', {
-        params: { ...queryParams, format },
+        params: { ...effectiveParams, format },
         responseType: 'blob',
       });
       const blob = new Blob([res.data]);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `jfc-association-report-${period === 'custom' ? `${customFrom}_to_${customTo}` : period || 'filtered'}.${format}`;
+      const filenameRange =
+        period === 'custom'
+          ? `${appliedCustomRange?.from || customFrom}_to_${appliedCustomRange?.to || customTo}`
+          : period || 'filtered';
+      a.download = `jfc-association-report-${filenameRange}.${format}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -318,7 +337,7 @@ export default function ReportsPage() {
               <button
                 key={fmt}
                 onClick={() => handleDownload(fmt)}
-                disabled={downloading === fmt || loading || !canQuery}
+                disabled={downloading === fmt || loading || !(canQuery || lastQueryParams)}
                 className="rounded-lg bg-gold text-navy px-3 py-2 text-xs font-medium cursor-pointer disabled:opacity-50 uppercase"
               >
                 {downloading === fmt ? 'Preparing…' : `↓ ${fmt}`}
@@ -342,7 +361,7 @@ export default function ReportsPage() {
 
         <p className="text-xs text-ink-muted pt-1 border-t border-line">
           Showing: <strong className="text-ink">
-            {!canQuery
+            {!canQuery && !report
               ? 'Nothing selected yet'
               : period
               ? rangeLabel
@@ -353,15 +372,9 @@ export default function ReportsPage() {
         </p>
       </div>
 
-      {!canQuery ? (
-        <p className="text-ink-muted ledger-card p-5 text-center text-sm">
-          Pick a Management period and/or a date range above to see the report.
-        </p>
-      ) : loading ? (
+      {loading ? (
         <p className="text-ink-muted">Loading…</p>
-      ) : !report ? (
-        <p className="text-danger">Could not load report.</p>
-      ) : (
+      ) : report ? (
         <>
           {/* Headline: Income, Expenses, Net at a glance */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -465,6 +478,12 @@ export default function ReportsPage() {
             </p>
           </div>
         </>
+      ) : canQuery ? (
+        <p className="text-danger">Could not load report.</p>
+      ) : (
+        <p className="text-ink-muted ledger-card p-5 text-center text-sm">
+          Pick a Management period and/or a date range above to see the report.
+        </p>
       )}
       </>
       )}
