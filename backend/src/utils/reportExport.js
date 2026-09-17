@@ -1,5 +1,23 @@
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
+const path = require('path');
+
+// The prepared club letterhead - see docs/LETTERHEAD_TEMPLATE_SPEC.md for
+// the exact page/safe-area spec this was built to (A4, 300 DPI,
+// 2480x3508px). Drawn as a full-page background on every page of the PDF
+// export; report content is confined to the same safe area the spec
+// defines so it never overlaps the header or footer artwork.
+const LETTERHEAD_PATH = path.join(__dirname, '..', '..', 'assets', 'letterhead.png');
+
+// A4 in points, and the safe-area margins from the spec, converted from mm
+// (1mm = 2.83465pt): header 40mm, footer 20mm, left/right 15mm each.
+const MM_TO_PT = 2.83465;
+const PAGE_MARGINS = {
+  top: 40 * MM_TO_PT,
+  bottom: 20 * MM_TO_PT,
+  left: 15 * MM_TO_PT,
+  right: 15 * MM_TO_PT,
+};
 
 function formatINR(amount) {
   return `Rs. ${Number(amount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
@@ -105,11 +123,22 @@ async function toExcel(report) {
 
 function toPDF(report) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 40 });
+    const doc = new PDFDocument({ size: 'A4', margins: PAGE_MARGINS });
     const chunks = [];
     doc.on('data', (chunk) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
+
+    // Draw the letterhead full-bleed (0,0 to the exact page size) on every
+    // page - the first one now, and every subsequent one PDFKit adds on
+    // its own when content overflows the margins above (that's what makes
+    // page breaks "just work": doc.text()'s own pagination already stays
+    // inside PAGE_MARGINS, so it never has to touch the header/footer art).
+    function drawLetterhead() {
+      doc.image(LETTERHEAD_PATH, 0, 0, { width: doc.page.width, height: doc.page.height });
+    }
+    doc.on('pageAdded', drawLetterhead);
+    drawLetterhead();
 
     doc.fontSize(18).text('Jolly Friends Club — Association Financial Report', { align: 'center' });
     doc.fontSize(10).fillColor('#666').text(`Period: ${periodLabel(report)}`, { align: 'center' });
