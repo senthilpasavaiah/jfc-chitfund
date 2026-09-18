@@ -88,11 +88,6 @@ function buildRows(cv: number, months: number, rate: 'standard' | 'jfc'): Row[] 
   });
 }
 
-function commissionPercentLabel(schedule: 'standard' | 'jfc', months: number) {
-  if (months === 10) return schedule === 'standard' ? '3%' : '2%';
-  if (months === 20) return schedule === 'standard' ? '1.5%' : '1%';
-  return '';
-}
 
 const INR = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const INRi = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN');
@@ -174,8 +169,8 @@ export default function CalculatorPage() {
         >
           {selMonths ? (
             <>
-              <option value="standard">{commissionPercentLabel('standard', selMonths)} Commission (Standard Rate)</option>
-              <option value="jfc">{commissionPercentLabel('jfc', selMonths)} Commission (JFC Actual Rate)</option>
+              <option value="standard">3% Commission</option>
+              <option value="jfc">2% Commission</option>
             </>
           ) : (
             <option value="">Select duration first</option>

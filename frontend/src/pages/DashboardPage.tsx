@@ -34,7 +34,7 @@ export default function DashboardPage() {
   // Same selector as the Fund and Report pages, reading the same backend
   // data - so whichever period is picked here shows the identical figures
   // a user would see there too. New Management is selected by default.
-  const [mgmtView, setMgmtView] = useState<'previous' | 'new' | 'all' | null>('new');
+  const [mgmtView, setMgmtView] = useState<'previous' | 'new' | null>('new');
 
   useEffect(() => {
     client
@@ -58,6 +58,7 @@ export default function DashboardPage() {
     <div className="space-y-5">
       {mgmt && (
         <div className="space-y-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
           <div className="flex rounded-lg border border-line overflow-hidden text-xs font-medium w-fit">
             {([
               { key: 'previous', label: 'Previous Management' },
@@ -72,10 +73,13 @@ export default function DashboardPage() {
               </button>
             ))}
           </div>
+          <span className="text-xs text-ink-muted">
+            {mgmtView === 'new' ? 'From July 1st 2026' : mgmtView === 'previous' ? 'Up to 30 Jun 2026 — frozen, read-only' : ''}
+          </span>
+          </div>
 
-          {(mgmtView === 'previous' || mgmtView === 'all') && (
+          {mgmtView === 'previous' && (
             <div>
-              <div className="text-xs text-ink-muted mb-1.5">Previous Management — up to 30 Jun 2026</div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 items-stretch">
                 <StatCard label="Number of members" value={String(summary.totalMembers)} accentBorder="#FFD700" />
                 <StatCard label="Santha" value={formatINR(mgmt.previousManagement.santha)} accentBorder="#9333ea" />
@@ -90,9 +94,8 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {(mgmtView === 'new' || mgmtView === 'all') && (
+          {mgmtView === 'new' && (
             <div>
-              <div className="text-xs text-ink-muted mb-1.5">New Management — since 1 Jul 2026</div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 items-stretch">
                 <StatCard label="Opening principal" value={formatINR(mgmt.newManagement.openingBalance)} sub="From Previous Management" accentBorder="#003366" />
                 <StatCard label="New Santha" value={formatINR(mgmt.newManagement.santha)} accentBorder="#9333ea" />
@@ -104,11 +107,6 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {mgmtView === 'all' && (
-            <p className="text-[11px] text-ink-muted">
-              Shown separately, not combined — {formatINR(mgmt.previousManagement.finalSettlement)} is New Management's opening balance, not new income.
-            </p>
-          )}
         </div>
       )}
 

@@ -42,7 +42,7 @@ export default function FundsPage() {
   const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
   // Which management period the top summary and the tabs' data are
   // filtered by. Defaults to New Management whenever the page opens.
-  const [period, setPeriod] = useState<'previous' | 'new' | 'all' | null>('new');
+  const [period, setPeriod] = useState<'previous' | 'new' | null>('new');
   const [loading, setLoading] = useState(true);
 
   const [expForm, setExpForm] = useState({ date: '', category: 'OFFICE', description: '', amount: '' });
@@ -258,13 +258,12 @@ export default function FundsPage() {
               </button>
             ))}
           </div>
+          <span className="text-xs text-ink-muted">
+            {period === 'new' ? 'From July 1st 2026' : period === 'previous' ? 'Up to 30 Jun 2026 — frozen, read-only' : ''}
+          </span>
 
-          {(period === 'previous' || period === 'all') && (
+          {period === 'previous' && (
             <div className="ledger-card p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold">Previous Management</h3>
-                <span className="text-xs text-ink-muted">Up to 30 Jun 2026 — frozen, read-only</span>
-              </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Metric label="Santha" value={mgmt.previousManagement.santha} />
                 <Metric label="Donation" value={mgmt.previousManagement.donation} />
@@ -278,12 +277,8 @@ export default function FundsPage() {
             </div>
           )}
 
-          {(period === 'new' || period === 'all') && (
+          {period === 'new' && (
             <div className="ledger-card p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold">New Management</h3>
-                <span className="text-xs text-ink-muted">Since 1 Jul 2026</span>
-              </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Metric label="Opening Principal" value={mgmt.newManagement.openingBalance} />
                 <Metric label="New Santha" value={mgmt.newManagement.santha} />
@@ -295,11 +290,6 @@ export default function FundsPage() {
             </div>
           )}
 
-          {period === 'all' && (
-            <p className="text-xs text-ink-muted px-1">
-              Previous and New Management are shown separately above — {formatINR(mgmt.previousManagement.finalSettlement)} is New Management's opening balance, not counted a second time as income.
-            </p>
-          )}
         </div>
       )}
 
@@ -386,11 +376,6 @@ export default function FundsPage() {
 
           {tab === 'donation' && (
             <div className="space-y-4">
-              {period !== 'all' && (
-                <p className="text-xs text-ink-muted">
-                  Showing: <strong>{period === 'new' ? 'New Management (from 1 Jul 2026)' : 'Previous Management (up to 30 Jun 2026)'}</strong> — switch the selector above to see other periods.
-                </p>
-              )}
               {canManage && (
                 <form onSubmit={handleAddDonation} className="ledger-card p-5">
                   <h3 className="font-bold mb-3">Add Donation Entry</h3>
@@ -452,11 +437,6 @@ export default function FundsPage() {
 
           {tab === 'santha' && (
             <div className="space-y-4">
-              {period !== 'all' && (
-                <p className="text-xs text-ink-muted">
-                  Showing: <strong>{period === 'new' ? 'New Management (from 1 Jul 2026)' : 'Previous Management (up to 30 Jun 2026)'}</strong> — switch the selector above to see other periods.
-                </p>
-              )}
               {canManage && (
                 <form onSubmit={handleAddSantha} className="ledger-card p-5">
                   <h3 className="font-bold mb-3">Add Santha Entry</h3>
@@ -524,11 +504,6 @@ export default function FundsPage() {
 
           {tab === 'expenses' && (
             <div className="space-y-4">
-              {period !== 'all' && (
-                <p className="text-xs text-ink-muted">
-                  Showing: <strong>{period === 'new' ? 'New Management (from 1 Jul 2026)' : 'Previous Management (up to 30 Jun 2026)'}</strong> — switch the selector above to see other periods.
-                </p>
-              )}
               {liveChitExpenseInPeriod > 0 && (
                 <div className="ledger-card p-4 flex items-center justify-between bg-paper/60">
                   <div>
@@ -617,11 +592,6 @@ export default function FundsPage() {
 
           {tab === 'chitProfit' && (
             <div className="space-y-4">
-              {period !== 'all' && (
-                <p className="text-xs text-ink-muted">
-                  Showing: <strong>{period === 'new' ? 'New Management (from 1 Jul 2026)' : 'Previous Management (up to 30 Jun 2026)'}</strong> — switch the selector above to see other periods.
-                </p>
-              )}
               {liveChitIncomeInPeriod > 0 && (
                 <div className="ledger-card p-4 flex items-center justify-between bg-paper/60">
                   <div>

@@ -37,6 +37,9 @@ export default function ChitsPage() {
   // Which chits are expanded inline (accordion) - a Set so any number of
   // chits can be open at once, independently of one another.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [editingRefId, setEditingRefId] = useState<string | null>(null);
+  const [editingRefValue, setEditingRefValue] = useState('');
+  const [savingRefId, setSavingRefId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -57,6 +60,29 @@ export default function ChitsPage() {
       else next.add(chitId);
       return next;
     });
+  }
+
+  function startEditRef(chit: Chit) {
+    setEditingRefId(chit.id);
+    setEditingRefValue(chit.refNumber);
+  }
+
+  async function saveRefNumber(chit: Chit) {
+    const next = editingRefValue.trim();
+    if (!next || next === chit.refNumber) {
+      setEditingRefId(null);
+      return;
+    }
+    setSavingRefId(chit.id);
+    try {
+      await client.patch(`/chits/${chit.id}/ref-number`, { refNumber: next });
+      setEditingRefId(null);
+      await load();
+    } catch (err: any) {
+      window.alert(err?.response?.data?.message || 'Could not update reference number.');
+    } finally {
+      setSavingRefId(null);
+    }
   }
 
   const sortedChits = [...chits].sort((a, b) => {
@@ -124,9 +150,33 @@ export default function ChitsPage() {
             const cardContent = (
               <>
                 <div className="min-w-0">
-                  <div className="font-medium truncate">{chit.refNumber}</div>
+                  {editingRefId === chit.id ? (
+                    <div className="flex items-center gap-1.5 min-w-0" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        autoFocus
+                        value={editingRefValue}
+                        onChange={(e) => setEditingRefValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); saveRefNumber(chit); }
+                          if (e.key === 'Escape') setEditingRefId(null);
+                        }}
+                        className="min-w-0 w-40 rounded-md border border-line px-2 py-1 text-sm font-medium"
+                        aria-label="Edit chit reference number"
+                        disabled={savingRefId === chit.id}
+                      />
+                      <button type="button" onClick={() => saveRefNumber(chit)} disabled={savingRefId === chit.id} className="text-xs font-bold text-navy hover:underline disabled:opacity-50">Save</button>
+                      <button type="button" onClick={() => setEditingRefId(null)} disabled={savingRefId === chit.id} className="text-xs text-ink-muted hover:underline disabled:opacity-50">Cancel</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="font-medium truncate">{chit.refNumber}</div>
+                      {canManage && (
+                        <button type="button" onClick={(e) => { e.stopPropagation(); startEditRef(chit); }} className="shrink-0 text-[11px] text-navy hover:underline" title="Edit chit name/reference">Edit</button>
+                      )}
+                    </div>
+                  )}
                   <div className="text-xs text-ink-muted mt-0.5 truncate">
-                    {chit.valueLakh} Lakh · {chit.totalMonths} Months · {chit.rateSchedule === 'jfc' ? 'JFC Rate' : 'Standard Rate'}
+                    {chit.valueLakh} Lakh · {chit.totalMonths} Months · {chit.rateSchedule === 'jfc' ? '2% Commission' : '3% Commission'}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
@@ -285,8 +335,8 @@ function CreateChitWizard({ onDone }: { onDone: () => void }) {
           <div>
             <label className="block text-xs font-semibold text-ink-muted mb-1">Commission Rate</label>
             <select value={rateSchedule} onChange={(e) => setRateSchedule(e.target.value as RateSchedule)} className="w-full rounded-lg border border-line px-3 py-2 text-sm">
-              <option value="jfc">JFC Actual Rate</option>
-              <option value="standard">Standard Rate</option>
+              <option value="jfc">2% Commission</option>
+              <option value="standard">3% Commission</option>
             </select>
           </div>
           <div>
@@ -374,7 +424,7 @@ function CreateChitWizard({ onDone }: { onDone: () => void }) {
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="flex justify-between border-b border-line pb-2"><span className="text-ink-muted">Chit Value</span><span className="font-tabular font-medium">{valueLakh} Lakh</span></div>
             <div className="flex justify-between border-b border-line pb-2"><span className="text-ink-muted">Duration</span><span className="font-medium">{totalMonths} Months</span></div>
-            <div className="flex justify-between border-b border-line pb-2"><span className="text-ink-muted">Rate</span><span className="font-medium">{rateSchedule === 'jfc' ? 'JFC Actual' : 'Standard'}</span></div>
+            <div className="flex justify-between border-b border-line pb-2"><span className="text-ink-muted">Rate</span><span className="font-medium">{rateSchedule === 'jfc' ? '2% Commission' : '3% Commission'}</span></div>
             <div className="flex justify-between border-b border-line pb-2"><span className="text-ink-muted">Members selected</span><span className="font-medium">{selected.length} of {capacity}</span></div>
           </div>
           {error && <p className="text-sm text-danger">{error}</p>}

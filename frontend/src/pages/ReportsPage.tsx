@@ -254,27 +254,31 @@ export default function ReportsPage() {
 
       {mgmt && (
         <div className="space-y-3">
-          <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium w-fit">
-            {([
-              { key: 'previous', label: 'Previous Management' },
-              { key: 'new', label: 'New Management' },
-            ] as const).map((p) => (
-              <button
-                key={p.key}
-                onClick={() => toggleManagement(p.key)}
-                className={`px-4 py-2 transition-colors cursor-pointer ${management === p.key ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
-              >
-                {p.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium w-fit">
+              {([
+                { key: 'previous', label: 'Previous Management' },
+                { key: 'new', label: 'New Management' },
+              ] as const).map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => toggleManagement(p.key)}
+                  className={`px-4 py-2 transition-colors cursor-pointer ${management === p.key ? 'bg-navy text-white' : 'bg-white text-ink-muted hover:bg-paper'}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            {management === 'previous' && (
+              <span className="text-xs text-ink-muted">Up to 30 Jun 2026 — frozen, read-only</span>
+            )}
+            {management === 'new' && (
+              <span className="text-xs text-ink-muted">From July 1st 2026</span>
+            )}
           </div>
 
           {management === 'previous' && (
             <div className="ledger-card p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold">Previous Management</h3>
-                <span className="text-xs text-ink-muted">Up to 30 Jun 2026 — frozen, read-only</span>
-              </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Metric label="Santha" value={mgmt.previousManagement.santha} />
                 <Metric label="Donation" value={mgmt.previousManagement.donation} />
@@ -290,10 +294,6 @@ export default function ReportsPage() {
 
           {management === 'new' && (
             <div className="ledger-card p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold">New Management</h3>
-                <span className="text-xs text-ink-muted">Since 1 Jul 2026</span>
-              </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Metric label="Opening Principal" value={mgmt.newManagement.openingBalance} />
                 <Metric label="New Santha" value={mgmt.newManagement.santha} />
@@ -359,17 +359,6 @@ export default function ReportsPage() {
           </div>
         ) : null}
 
-        <p className="text-xs text-ink-muted pt-1 border-t border-line">
-          Showing: <strong className="text-ink">
-            {!canQuery && !report
-              ? 'Nothing selected yet'
-              : period
-              ? rangeLabel
-              : queryParams.from && queryParams.to
-              ? `${new Date(queryParams.from).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} → ${new Date(queryParams.to).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
-              : rangeLabel}
-          </strong>
-        </p>
       </div>
 
       {loading ? (
