@@ -206,18 +206,6 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     }
   }
 
-  async function handleEditRefNumber() {
-    if (!chit) return;
-    const newRef = window.prompt('New reference number:', chit.refNumber);
-    if (!newRef || newRef === chit.refNumber) return;
-    try {
-      await client.patch(`/chits/${id}/ref-number`, { refNumber: newRef });
-      loadChit();
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Could not update reference number.');
-    }
-  }
-
   async function handleAssignDraw(memberId: string) {
     setError(null);
     try {
@@ -371,11 +359,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
         <div className="text-xs uppercase tracking-wide text-ink-muted">Jolly Friends Club</div>
         <h2 className="text-xl font-bold mt-0.5">
           {chit.refNumber} — {chit.valueLakh} Lakh / {chit.totalMonths} Months
-          {isAdmin && (
-            <button onClick={handleEditRefNumber} className="ml-2 text-xs font-normal text-navy underline cursor-pointer align-middle">
-              edit ref no.
-            </button>
-          )}
+
         </h2>
         <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-ink-muted mt-2">
           <span>Start Date: <strong className="text-ink font-tabular">{chit.startDate ? new Date(chit.startDate).toLocaleDateString('en-IN') : '—'}</strong></span>

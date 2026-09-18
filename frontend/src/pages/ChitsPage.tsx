@@ -171,7 +171,7 @@ export default function ChitsPage() {
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="font-medium truncate">{chit.refNumber}</div>
                       {canManage && (
-                        <button type="button" onClick={(e) => { e.stopPropagation(); startEditRef(chit); }} className="shrink-0 text-[11px] text-navy hover:underline" title="Edit chit name/reference">Edit</button>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); startEditRef(chit); }} className="shrink-0 text-[11px] text-navy hover:underline" title="Edit chit reference number">Edit ref no.</button>
                       )}
                     </div>
                   )}
