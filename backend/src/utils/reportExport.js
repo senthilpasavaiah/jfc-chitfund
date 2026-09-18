@@ -10,14 +10,14 @@ const path = require('path');
 const LETTERHEAD_PATH = path.join(__dirname, '..', '..', 'assets', 'letterhead.png');
 
 // A4 in points, and the safe-area margins, converted from mm (1mm =
-// 2.83465pt). The header margin was tightened from the original 40mm
-// spec to 24.5mm to match the letterhead's shorter header block (logo +
-// club name now only take ~24.5mm instead of a fixed 40mm reservation) -
-// see docs/LETTERHEAD_TEMPLATE_SPEC.md, updated alongside this. Bottom/
+// 2.83465pt). Header margin tuned to match the letterhead's actual header
+// content height (28.4mm) - it started at a fixed 40mm, then 24.5mm, then
+// settled here once the header's internal gap-to-divider was corrected to
+// match the footer's real divider-to-text gap (67px, not 20px). Bottom/
 // left/right are unchanged from the original spec.
 const MM_TO_PT = 2.83465;
 const PAGE_MARGINS = {
-  top: 24.5 * MM_TO_PT,
+  top: 28.4 * MM_TO_PT,
   bottom: 20 * MM_TO_PT,
   left: 15 * MM_TO_PT,
   right: 15 * MM_TO_PT,
