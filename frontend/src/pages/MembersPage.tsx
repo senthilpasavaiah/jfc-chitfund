@@ -15,9 +15,20 @@ export default function MembersPage() {
 
   async function load() {
     setLoading(true);
-    const res = await client.get('/members', { params: { search: search || undefined } });
-    setMembers(res.data.data);
-    setLoading(false);
+    try {
+      const pageSize = 100;
+      const first = await client.get('/members', { params: { page: 1, pageSize, search: search || undefined } });
+      const firstPage = first.data;
+      const totalPages = firstPage.pagination?.totalPages || 1;
+      const remaining = await Promise.all(
+        Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) =>
+          client.get('/members', { params: { page: index + 2, pageSize, search: search || undefined } })
+        )
+      );
+      setMembers([...firstPage.data, ...remaining.flatMap((res) => res.data.data)]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -105,7 +116,8 @@ export default function MembersPage() {
       />
 
       <div className="ledger-card overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="table-scroll">
+        <table className="w-full min-w-[720px] text-sm">
           <thead className="bg-navy-light text-white text-xs uppercase tracking-wide">
             <tr>
               <th className="text-left px-4 py-3">Name</th>
@@ -162,6 +174,7 @@ export default function MembersPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

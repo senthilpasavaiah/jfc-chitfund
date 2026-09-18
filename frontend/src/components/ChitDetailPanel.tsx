@@ -355,23 +355,6 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
 
   return (
     <div className="space-y-5">
-      <div className="ledger-card p-5">
-        <div className="text-xs uppercase tracking-wide text-ink-muted">Jolly Friends Club</div>
-        <h2 className="text-xl font-bold mt-0.5">
-          {chit.refNumber} — {chit.valueLakh} Lakh / {chit.totalMonths} Months
-
-        </h2>
-        <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-ink-muted mt-2">
-          <span>Start Date: <strong className="text-ink font-tabular">{chit.startDate ? new Date(chit.startDate).toLocaleDateString('en-IN') : '—'}</strong></span>
-          <span>End Date: <strong className="text-ink font-tabular">{chit.endDate ? new Date(chit.endDate).toLocaleDateString('en-IN') : '—'}</strong></span>
-          <span>Months Elapsed: <strong className="text-ink">{chit.monthsElapsed}</strong></span>
-          <span>Months Remaining: <strong className="text-ink">{chit.monthsRemaining}</strong></span>
-          <span>Base monthly: <strong className="text-ink font-tabular">{formatINR(chit.baseMonthly)}</strong></span>
-          <span>Commission/month: <strong className="text-ink font-tabular">{formatINR(chit.commissionPerMonth)}</strong></span>
-        </div>
-        <span className="inline-block mt-2 text-xs bg-success/10 text-success px-2.5 py-1 rounded-full font-medium">{chit.filled}/{chit.capacity} members</span>
-      </div>
-
       <div className="flex gap-2 overflow-x-auto pb-1">
         {chit.timeline.map((m) => (
           <button

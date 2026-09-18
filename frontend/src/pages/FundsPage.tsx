@@ -240,7 +240,7 @@ export default function FundsPage() {
 
   return (
     <div className="space-y-6">
-      <p className="text-ink-muted text-sm">Donation, Santha, Expenses, historical Chit profit, and the Final Settlement ledger.</p>
+      <p className="text-ink-muted text-sm pl-6">Donation, Santha, Expenses, historical Chit profit, and the Final Settlement ledger.</p>
 
       {mgmt && (
         <div className="space-y-3">
@@ -258,7 +258,7 @@ export default function FundsPage() {
               </button>
             ))}
           </div>
-          <span className="text-xs text-ink-muted">
+          <span className="text-xs text-ink-muted pl-6">
             {period === 'new' ? 'From July 1st 2026' : period === 'previous' ? 'Up to 30 Jun 2026 — frozen, read-only' : ''}
           </span>
 
@@ -294,7 +294,8 @@ export default function FundsPage() {
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium">
+        <div className="overflow-x-auto max-w-full">
+        <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium w-max min-w-full">
           {TABS.map((t) => (
             <button
               key={t.key}
@@ -304,6 +305,7 @@ export default function FundsPage() {
               {t.label}
             </button>
           ))}
+        </div>
         </div>
         {activeTabInfo?.total !== undefined && (
           <span className="text-xs bg-gold/20 text-gold-dim px-3 py-1.5 rounded-full font-bold font-tabular">

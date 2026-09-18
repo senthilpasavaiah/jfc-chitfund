@@ -45,3 +45,27 @@
     border-radius: 0.75rem;
   }
 }
+
+
+@layer utilities {
+  .table-scroll {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+}
+
+@media (max-width: 767px) {
+  .ledger-card:has(> table) {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  .ledger-card:has(> table) > table,
+  .table-scroll > table {
+    min-width: 680px;
+  }
+}

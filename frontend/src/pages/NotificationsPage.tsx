@@ -119,7 +119,7 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <p className="text-ink-muted text-sm">
           Every reminder/OTP "intent" the app has logged (e.g. password resets, drawer assignments) — nothing is
           actually sent via WhatsApp/SMS/Email yet, see NOTIFICATIONS.md for how to go live.
@@ -219,7 +219,8 @@ export default function NotificationsPage() {
 
       {!error && notifications && notifications.length > 0 && (
         <div className="ledger-card overflow-hidden">
-          <table className="w-full table-fixed text-sm">
+          <div className="table-scroll">
+          <table className="min-w-[820px] w-full table-auto text-sm">
             <colgroup>
               <col className="w-[92px]" />
               <col className="w-[18%]" />
@@ -271,6 +272,7 @@ export default function NotificationsPage() {
                 ))}
               </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
