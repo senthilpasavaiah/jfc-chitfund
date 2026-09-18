@@ -21,6 +21,7 @@ const dashboardRoutes = require('./routes/dashboard.routes');
 const reportRoutes = require('./routes/report.routes');
 const fundRoutes = require('./routes/fund.routes');
 const notificationRoutes = require('./routes/notification.routes');
+const documentRoutes = require('./routes/document.routes');
 
 const app = express();
 
@@ -34,9 +35,12 @@ app.use(
     credentials: true,
   })
 );
-// 8mb to accommodate base64-encoded payment-proof screenshots.
-app.use(express.json({ limit: '8mb' }));
-app.use(express.urlencoded({ extended: true, limit: '8mb' }));
+// 15mb to accommodate base64-encoded club documents (up to ~10MB raw
+// files - scanned bylaws/registration PDFs - inflate to ~13.3MB as
+// base64); payment-proof screenshots (capped at 6MB raw) fit comfortably
+// under this too.
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.use(cookieParser());
 app.use(compression());
 app.use(hpp());
@@ -84,6 +88,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/funds', fundRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/documents', documentRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

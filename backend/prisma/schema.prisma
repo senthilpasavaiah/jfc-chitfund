@@ -104,6 +104,7 @@ model User {
   notificationsSent Notification[]        @relation("NotificationCreatedBy")
   paymentsRecorded  Payment[]              @relation("PaymentRecordedBy")
   expensesRecorded  Expense[]              @relation("ExpenseRecordedBy")
+  clubDocumentsUploaded ClubDocument[]
 
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -361,6 +362,33 @@ model Notification {
   @@index([memberId])
   @@index([status])
   @@map("notifications")
+}
+
+// Club-level documents (Accounts, Registration, Bylaws, etc.) - distinct
+// from MemberDocument above (per-member ID proofs, never wired to real
+// storage). Stored as base64 directly in Postgres, same as
+// ChitPaymentProof's image_data - no external storage dependency.
+model ClubDocument {
+  id             String           @id @default(uuid())
+  title          String
+  category       DocumentCategory @default(OTHER)
+  description    String?
+  fileName       String
+  fileMimeType   String
+  fileData       String
+  uploadedById   String
+  uploadedBy     User             @relation(fields: [uploadedById], references: [id])
+  uploadedAt     DateTime         @default(now())
+
+  @@index([category])
+  @@map("club_documents")
+}
+
+enum DocumentCategory {
+  ACCOUNTS
+  REGISTRATION
+  BYLAWS
+  OTHER
 }
 
 // ----------------------------------------------------------------------------

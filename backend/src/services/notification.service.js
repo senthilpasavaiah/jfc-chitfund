@@ -1,4 +1,5 @@
 const { query } = require('../config/db');
+const ApiError = require('../utils/ApiError');
 
 /**
  * Records a notification "intent" (the message that would be sent).
@@ -46,4 +47,31 @@ async function list({ limit = 100, offset = 0 } = {}) {
   return rows;
 }
 
-module.exports = { dispatch, listForMember, list };
+const CHANNELS = ['SMS', 'WHATSAPP', 'EMAIL', 'PUSH'];
+
+/**
+ * A person manually composes and "sends" a notification (still just
+ * logged, per the note above `dispatch()` - no live provider is wired up
+ * yet). This is the same `dispatch()` every automatic notification already
+ * goes through; the only difference is a human picked the recipient and
+ * wrote the message instead of a system action doing it.
+ */
+async function create({ memberId, channel, subject, body, createdById }) {
+  if (!memberId) throw ApiError.badRequest('A recipient member is required.');
+  if (!CHANNELS.includes(channel)) throw ApiError.badRequest(`Channel must be one of: ${CHANNELS.join(', ')}`);
+  if (!body || !body.trim()) throw ApiError.badRequest('Message body is required.');
+
+  const { rows: memberRows } = await query('SELECT id FROM members WHERE id = $1', [memberId]);
+  if (!memberRows[0]) throw ApiError.notFound('Member not found.');
+
+  return dispatch({
+    memberId,
+    channel,
+    type: 'GENERAL',
+    subject: subject && subject.trim() ? subject.trim() : null,
+    body: body.trim(),
+    createdById,
+  });
+}
+
+module.exports = { dispatch, listForMember, list, create, CHANNELS };

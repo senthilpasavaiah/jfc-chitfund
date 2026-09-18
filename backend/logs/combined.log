@@ -1,0 +1,8 @@
+{"level":"info","message":"\u001b[0mGET /api/documents \u001b[32m200\u001b[0m 24.666 ms - 26\u001b[0m","timestamp":"2026-09-18T07:32:42.207Z"}
+{"level":"info","message":"\u001b[0mPOST /api/documents \u001b[32m201\u001b[0m 7.065 ms - 299\u001b[0m","timestamp":"2026-09-18T07:32:42.223Z"}
+{"level":"info","message":"\u001b[0mGET /api/documents/e3ee3b95-b95a-4b9e-b8f6-df63bd6aa09f/file \u001b[32m200\u001b[0m 26.935 ms - 9\u001b[0m","timestamp":"2026-09-18T07:33:13.855Z"}
+{"level":"info","message":"\u001b[0mPOST /api/documents \u001b[33m403\u001b[0m 2.722 ms - 58\u001b[0m","timestamp":"2026-09-18T07:33:13.930Z"}
+{"level":"info","message":"\u001b[0mGET /api/documents \u001b[32m200\u001b[0m 2.993 ms - 277\u001b[0m","timestamp":"2026-09-18T07:33:13.938Z"}
+{"level":"info","message":"\u001b[0mPOST /api/notifications \u001b[32m201\u001b[0m 6.694 ms - 322\u001b[0m","timestamp":"2026-09-18T07:33:13.950Z"}
+{"level":"info","message":"\u001b[0mPOST /api/notifications \u001b[33m403\u001b[0m 1.658 ms - 58\u001b[0m","timestamp":"2026-09-18T07:33:13.958Z"}
+{"level":"info","message":"\u001b[0mDELETE /api/documents/e3ee3b95-b95a-4b9e-b8f6-df63bd6aa09f \u001b[32m200\u001b[0m 3.328 ms - 46\u001b[0m","timestamp":"2026-09-18T07:33:13.965Z"}
