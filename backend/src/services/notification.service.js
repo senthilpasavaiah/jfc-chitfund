@@ -1,4 +1,4 @@
-const { query } = require('../config/db');
+const { query, withTransaction } = require('../config/db');
 const ApiError = require('../utils/ApiError');
 
 /**
@@ -56,22 +56,49 @@ const CHANNELS = ['SMS', 'WHATSAPP', 'EMAIL', 'PUSH'];
  * goes through; the only difference is a human picked the recipient and
  * wrote the message instead of a system action doing it.
  */
-async function create({ memberId, channel, subject, body, createdById }) {
-  if (!memberId) throw ApiError.badRequest('A recipient member is required.');
+async function create({ memberId, memberIds, allMembers = false, channel, subject, body, createdById }) {
   if (!CHANNELS.includes(channel)) throw ApiError.badRequest(`Channel must be one of: ${CHANNELS.join(', ')}`);
   if (!body || !body.trim()) throw ApiError.badRequest('Message body is required.');
 
-  const { rows: memberRows } = await query('SELECT id FROM members WHERE id = $1', [memberId]);
-  if (!memberRows[0]) throw ApiError.notFound('Member not found.');
+  let recipientIds = Array.isArray(memberIds) ? [...new Set(memberIds.filter(Boolean))] : [];
+  if (memberId) recipientIds.push(memberId);
+  recipientIds = [...new Set(recipientIds)];
 
-  return dispatch({
-    memberId,
-    channel,
-    type: 'GENERAL',
-    subject: subject && subject.trim() ? subject.trim() : null,
-    body: body.trim(),
-    createdById,
+  if (allMembers) {
+    const { rows } = await query(`SELECT id FROM members ORDER BY name ASC`);
+    recipientIds = rows.map((row) => row.id);
+  }
+
+  if (!recipientIds.length) throw ApiError.badRequest('Select at least one recipient or choose All active members.');
+
+  const { rows: memberRows } = await query(
+    `SELECT id FROM members WHERE id = ANY($1::uuid[])`,
+    [recipientIds]
+  );
+  if (memberRows.length !== recipientIds.length) throw ApiError.notFound('One or more selected members were not found.');
+
+  const cleanSubject = subject && subject.trim() ? subject.trim() : null;
+  const cleanBody = body.trim();
+
+  return withTransaction(async (client) => {
+    const created = [];
+    for (const id of recipientIds) {
+      const { rows } = await client.query(
+        `INSERT INTO notifications (member_id, channel, type, subject, body, status, created_by_id)
+         VALUES ($1, $2, 'GENERAL', $3, $4, 'LOGGED', $5)
+         RETURNING *`,
+        [id, channel, cleanSubject, cleanBody, createdById]
+      );
+      created.push(rows[0]);
+    }
+    return created;
   });
 }
 
-module.exports = { dispatch, listForMember, list, create, CHANNELS };
+async function remove(id) {
+  const { rows } = await query('DELETE FROM notifications WHERE id = $1 RETURNING id', [id]);
+  if (!rows[0]) throw ApiError.notFound('Notification not found.');
+  return rows[0];
+}
+
+module.exports = { dispatch, listForMember, list, create, remove, CHANNELS };
