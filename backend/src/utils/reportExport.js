@@ -122,6 +122,12 @@ async function toExcel(report) {
 }
 
 function toPDF(report) {
+  const NAVY_HEX = '#193250';
+  const GOLD_HEX = '#B8863E'; // darker than the brand gold for readable small text
+  const ZEBRA_HEX = '#F3F5F8';
+  const BORDER_HEX = '#D8DCE3';
+  const TOTAL_BG_HEX = '#EDEFF3';
+
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margins: PAGE_MARGINS });
     const chunks = [];
@@ -140,43 +146,110 @@ function toPDF(report) {
     doc.on('pageAdded', drawLetterhead);
     drawLetterhead();
 
-    doc.fontSize(18).text('Jolly Friends Club — Association Financial Report', { align: 'center' });
-    doc.fontSize(10).fillColor('#666').text(`Period: ${periodLabel(report)}`, { align: 'center' });
-    doc.moveDown(1.5);
+    const contentW = doc.page.width - PAGE_MARGINS.left - PAGE_MARGINS.right;
 
-    doc.fontSize(13).fillColor('#000').text('Association Income');
-    doc.moveDown(0.3);
-    doc.fontSize(10);
-    for (const row of report.incomeBreakdown) {
-      doc.text(`${row.label}: ${formatINR(row.amount)}`);
+    // Adds a new page (redrawing the letterhead via the listener above) if
+    // `needed` more points won't fit before the footer safe-area line.
+    // Returns whether a break happened, so callers can redraw a table's
+    // header row on the fresh page - matching how real bank/card statements
+    // repeat their column headings on every continuation page.
+    function ensureSpace(needed, onBreak) {
+      const bottom = doc.page.height - PAGE_MARGINS.bottom;
+      if (doc.y + needed > bottom) {
+        doc.addPage();
+        doc.y = PAGE_MARGINS.top;
+        if (onBreak) onBreak();
+        return true;
+      }
+      return false;
     }
-    doc.font('Helvetica-Bold').text(`Total Income: ${formatINR(report.association.income.total)}`);
-    doc.font('Helvetica');
-    doc.moveDown(1);
 
-    doc.fontSize(13).text('Association Expenses');
-    doc.moveDown(0.3);
-    doc.fontSize(10);
-    for (const row of report.expenseBreakdown) {
-      doc.text(`${row.label}: ${formatINR(row.amount)}`);
+    function drawTableHeaderRow(cols, rowH) {
+      const x0 = PAGE_MARGINS.left;
+      const y = doc.y;
+      doc.rect(x0, y, contentW, rowH).fill(NAVY_HEX);
+      let cx = x0;
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#FFFFFF');
+      cols.forEach((col) => {
+        doc.text(col.label, cx + 8, y + 7, { width: col.width - 16, align: col.align || 'left' });
+        cx += col.width;
+      });
+      doc.y = y + rowH;
     }
-    doc.font('Helvetica-Bold').text(`Total Expenses: ${formatINR(report.association.expenses.total)}`);
-    doc.font('Helvetica');
-    doc.moveDown(1);
 
-    doc.fontSize(13).text('Net Profit / Surplus');
-    doc.moveDown(0.3);
-    doc.fontSize(12).font('Helvetica-Bold').text(formatINR(report.association.netProfit));
-    doc.font('Helvetica');
-    doc.moveDown(1);
-
-    doc.fontSize(13).text('Chit-wise Financial Summary');
-    doc.moveDown(0.3);
-    doc.fontSize(9);
-    for (const c of report.chitSummary) {
-      const expensePart = c.expense === null ? '' : `  |  Expenses: ${formatINR(c.expense)}`;
-      doc.text(`${chitLabel(c)}  |  ${c.status}  |  Income: ${formatINR(c.income)}${expensePart}  |  Net: ${formatINR(c.net)}`);
+    function drawDataRow(cols, values, { zebra, bold, bg, textColor } = {}, rowH) {
+      const x0 = PAGE_MARGINS.left;
+      const y = doc.y;
+      const fillColor = bg || (zebra ? ZEBRA_HEX : null);
+      if (fillColor) doc.rect(x0, y, contentW, rowH).fill(fillColor);
+      let cx = x0;
+      doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9.5).fillColor(textColor || '#1A1A1A');
+      cols.forEach((col, i) => {
+        doc.text(String(values[i]), cx + 8, y + 6, { width: col.width - 16, align: col.align || 'left' });
+        cx += col.width;
+      });
+      doc.moveTo(x0, y + rowH).lineTo(x0 + contentW, y + rowH).lineWidth(0.5).strokeColor(BORDER_HEX).stroke();
+      doc.y = y + rowH;
     }
+
+    // A bank/credit-card-statement-style table: shaded header row (repeats
+    // on every continuation page), zebra-striped body rows, a light rule
+    // under each row - instead of the plain colon-separated text lines
+    // this export used to produce.
+    function drawTable({ columns, rows, rowH = 22, headerRowH = 24 }) {
+      const cols = columns.map((c) => ({ ...c, width: c.width * contentW }));
+      ensureSpace(headerRowH);
+      drawTableHeaderRow(cols, headerRowH);
+      rows.forEach((row, i) => {
+        ensureSpace(rowH, () => drawTableHeaderRow(cols, headerRowH));
+        drawDataRow(cols, row.values, { zebra: !row.bold && i % 2 === 1, bold: row.bold, bg: row.bg, textColor: row.textColor }, rowH);
+      });
+    }
+
+    // Period, right-aligned under the header - no separate report title,
+    // the letterhead itself already carries the club's identity.
+    doc.font('Helvetica').fontSize(10).fillColor('#555555').text(`Period: ${periodLabel(report)}`, PAGE_MARGINS.left, doc.y, { width: contentW, align: 'right' });
+    doc.moveDown(1.1);
+
+    doc.font('Helvetica-Bold').fontSize(12).fillColor(NAVY_HEX).text('Association Summary', PAGE_MARGINS.left, doc.y);
+    doc.moveDown(0.4);
+    drawTable({
+      columns: [
+        { label: 'Description', width: 0.7, align: 'left' },
+        { label: 'Amount', width: 0.3, align: 'right' },
+      ],
+      rows: [
+        ...report.incomeBreakdown.map((r) => ({ values: [r.label, formatINR(r.amount)] })),
+        { values: ['Total Income', formatINR(report.association.income.total)], bold: true, bg: TOTAL_BG_HEX },
+        ...report.expenseBreakdown.map((r) => ({ values: [r.label, formatINR(r.amount)] })),
+        { values: ['Total Expenses', formatINR(report.association.expenses.total)], bold: true, bg: TOTAL_BG_HEX },
+      ],
+    });
+
+    doc.moveDown(0.7);
+    ensureSpace(34);
+    const barY = doc.y;
+    doc.rect(PAGE_MARGINS.left, barY, contentW, 34).fill(NAVY_HEX);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#FFFFFF').text('Net Profit / Surplus', PAGE_MARGINS.left + 12, barY + 10, { width: contentW * 0.6, align: 'left' });
+    doc.font('Helvetica-Bold').fontSize(12).fillColor('#F0C674').text(formatINR(report.association.netProfit), PAGE_MARGINS.left, barY + 9, { width: contentW - 12, align: 'right' });
+    doc.y = barY + 34;
+    doc.moveDown(1.1);
+
+    ensureSpace(40);
+    doc.font('Helvetica-Bold').fontSize(12).fillColor(NAVY_HEX).text('Chit-wise Financial Summary', PAGE_MARGINS.left, doc.y);
+    doc.moveDown(0.4);
+    drawTable({
+      columns: [
+        { label: 'Chit', width: 0.28, align: 'left' },
+        { label: 'Status', width: 0.14, align: 'left' },
+        { label: 'Income', width: 0.19, align: 'right' },
+        { label: 'Expenses', width: 0.19, align: 'right' },
+        { label: 'Net', width: 0.2, align: 'right' },
+      ],
+      rows: report.chitSummary.map((c) => ({
+        values: [chitLabel(c), c.status, formatINR(c.income), c.expense === null ? '\u2014' : formatINR(c.expense), formatINR(c.net)],
+      })),
+    });
 
     doc.end();
   });
