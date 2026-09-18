@@ -131,6 +131,10 @@ function toPDF(report) {
   const ZEBRA_HEX = '#F3F5F8';
   const BORDER_HEX = '#D8DCE3';
   const TOTAL_BG_HEX = '#EDEFF3';
+  // Total vertical breathing room inside any filled band (split evenly
+  // above and below the text). One constant so table rows, header rows
+  // and the net bar can't drift apart again.
+  const CELL_PAD_Y = 12;
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margins: PAGE_MARGINS });
@@ -168,19 +172,52 @@ function toPDF(report) {
       return false;
     }
 
+    // --- Vertical rhythm helpers -------------------------------------
+    // PDFKit's heightOfString() reports the *line box*: cap height plus
+    // the descender plus the font's line gap. Both of those extras sit
+    // BELOW the visible glyphs. So sizing a band as heightOfString + pad
+    // makes the band taller than it looks like it needs to be, and
+    // centering on that same height parks the text above the band's true
+    // middle - which is exactly what made the navy Net Profit bar look
+    // oversized and top-heavy.
+    //
+    // inkHeight() measures what the eye actually sees instead: full line
+    // heights for every line but the last, then only the cap height of
+    // the last line. centerY() then returns the y to hand doc.text() so
+    // that ink block lands dead-centre in the band. Every filled band in
+    // this export (table headers, data rows, the net bar) goes through
+    // these two, so anything added later stays aligned by default -
+    // don't hand-roll (h - heightOfString) / 2 again.
+    function inkHeight(text, opts = {}) {
+      const lineH = doc.currentLineHeight(true);
+      const capH = (doc._font.ascender / 1000) * doc._fontSize;
+      const lines = Math.max(1, Math.round(doc.heightOfString(String(text), opts) / lineH));
+      return (lines - 1) * lineH + capH;
+    }
+
+    function centerY(text, bandY, bandH, opts = {}) {
+      return bandY + (bandH - inkHeight(text, opts)) / 2;
+    }
+
+    // Band height for a set of cells: the tallest ink block plus equal
+    // breathing room above and below (pad/2 each side).
+    function bandHeight(minH, pad, cells) {
+      return Math.max(minH, ...cells.map(({ text, opts }) => inkHeight(text, opts) + pad));
+    }
+
     function drawTableHeaderRow(cols, minRowH) {
       const x0 = PAGE_MARGINS.left;
       const y = doc.y;
       doc.font('Helvetica-Bold').fontSize(9.5);
       // Height is measured from the actual (possibly-wrapping) label text,
       // not a fixed guess - a header row can wrap just like a data row.
-      const rowH = Math.max(minRowH, ...cols.map((col) => doc.heightOfString(col.label, { width: col.width - 16 }) + 12));
+      const rowH = bandHeight(minRowH, CELL_PAD_Y, cols.map((col) => ({ text: col.label, opts: { width: col.width - 16 } })));
       doc.rect(x0, y, contentW, rowH).fill(NAVY_HEX);
       let cx = x0;
       doc.fillColor('#FFFFFF');
       cols.forEach((col) => {
-        const textH = doc.heightOfString(col.label, { width: col.width - 16, align: col.align || 'left' });
-        doc.text(col.label, cx + 8, y + (rowH - textH) / 2, { width: col.width - 16, align: col.align || 'left' });
+        const opts = { width: col.width - 16, align: col.align || 'left' };
+        doc.text(col.label, cx + 8, centerY(col.label, y, rowH, opts), opts);
         cx += col.width;
       });
       doc.y = y + rowH;
@@ -197,18 +234,18 @@ function toPDF(report) {
       // room and never overlaps the row below it. Padding (6pt top + 6pt
       // bottom) matches the single-line case exactly, so a normal
       // one-line row comes out the same height as before.
-      const rowH = Math.max(minRowH, ...cols.map((col, i) => doc.heightOfString(String(values[i]), { width: col.width - 16 }) + 12));
+      const rowH = bandHeight(minRowH, CELL_PAD_Y, cols.map((col, i) => ({ text: String(values[i]), opts: { width: col.width - 16 } })));
       const fillColor = bg || (zebra ? ZEBRA_HEX : null);
       if (fillColor) doc.rect(x0, y, contentW, rowH).fill(fillColor);
       let cx = x0;
       doc.fillColor(textColor || '#1A1A1A');
       cols.forEach((col, i) => {
         const text = String(values[i]);
-        const textH = doc.heightOfString(text, { width: col.width - 16, align: col.align || 'left' });
+        const opts = { width: col.width - 16, align: col.align || 'left' };
         // Vertically centered within the row, whatever its height ended up
         // being - a short "Rs. 5,000" and a wrapped 3-line label in the
         // row next to it both sit centered in their own cell.
-        doc.text(text, cx + 8, y + (rowH - textH) / 2, { width: col.width - 16, align: col.align || 'left' });
+        doc.text(text, cx + 8, centerY(text, y, rowH, opts), opts);
         cx += col.width;
       });
       doc.moveTo(x0, y + rowH).lineTo(x0 + contentW, y + rowH).lineWidth(0.5).strokeColor(BORDER_HEX).stroke();
@@ -227,12 +264,12 @@ function toPDF(report) {
       const cols = columns.map((c) => ({ ...c, width: c.width * contentW }));
       // Measuring needs the row's font active first (bold rows read taller).
       doc.font('Helvetica-Bold').fontSize(9.5);
-      const measuredHeaderH = Math.max(headerRowH, ...cols.map((col) => doc.heightOfString(col.label, { width: col.width - 16 }) + 12));
+      const measuredHeaderH = bandHeight(headerRowH, CELL_PAD_Y, cols.map((col) => ({ text: col.label, opts: { width: col.width - 16 } })));
       ensureSpace(measuredHeaderH);
       drawTableHeaderRow(cols, headerRowH);
       rows.forEach((row, i) => {
         doc.font(row.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9.5);
-        const measuredRowH = Math.max(rowH, ...cols.map((col, ci) => doc.heightOfString(String(row.values[ci]), { width: col.width - 16 }) + 12));
+        const measuredRowH = bandHeight(rowH, CELL_PAD_Y, cols.map((col, ci) => ({ text: String(row.values[ci]), opts: { width: col.width - 16 } })));
         ensureSpace(measuredRowH, () => drawTableHeaderRow(cols, headerRowH));
         drawDataRow(cols, row.values, { zebra: !row.bold && i % 2 === 1, bold: row.bold, bg: row.bg, textColor: row.textColor }, rowH);
       });
@@ -263,19 +300,25 @@ function toPDF(report) {
     // rows above - the label and value are on the same line here, so the
     // bar's height is driven by whichever of the two is taller (matters if
     // either ever wraps on a narrow page).
-    doc.font('Helvetica-Bold').fontSize(11);
-    const netLabelH = doc.heightOfString('Net Profit / Surplus', { width: contentW * 0.6 - 12 });
-    doc.fontSize(12);
+    const netLabelOpts = { width: contentW * 0.6 - 12, align: 'left' };
     const netValueText = formatINR(report.association.netProfit);
-    const netValueH = doc.heightOfString(netValueText, { width: contentW - 12 });
-    const barH = Math.max(netLabelH, netValueH) + 16;
+    const netValueOpts = { width: contentW - 12, align: 'right' };
+    // Measure each side under its own font, then take the taller ink
+    // block. Padding matches a table row's (CELL_PAD_Y) plus a small
+    // extra so the bar still reads as the emphasised closing line
+    // without ballooning to twice a row's height.
+    doc.font('Helvetica-Bold').fontSize(11);
+    const netLabelInk = inkHeight('Net Profit / Surplus', netLabelOpts);
+    doc.fontSize(12);
+    const netValueInk = inkHeight(netValueText, netValueOpts);
+    const barH = Math.max(netLabelInk, netValueInk) + CELL_PAD_Y + 4;
     ensureSpace(barH);
     const barY = doc.y;
     doc.rect(PAGE_MARGINS.left, barY, contentW, barH).fill(NAVY_HEX);
     doc.font('Helvetica-Bold').fontSize(11).fillColor('#FFFFFF')
-      .text('Net Profit / Surplus', PAGE_MARGINS.left + 12, barY + (barH - netLabelH) / 2, { width: contentW * 0.6 - 12, align: 'left' });
+      .text('Net Profit / Surplus', PAGE_MARGINS.left + 12, centerY('Net Profit / Surplus', barY, barH, netLabelOpts), netLabelOpts);
     doc.font('Helvetica-Bold').fontSize(12).fillColor('#F0C674')
-      .text(netValueText, PAGE_MARGINS.left, barY + (barH - netValueH) / 2, { width: contentW - 12, align: 'right' });
+      .text(netValueText, PAGE_MARGINS.left, centerY(netValueText, barY, barH, netValueOpts), netValueOpts);
     doc.y = barY + barH;
     doc.moveDown(1.1);
 
