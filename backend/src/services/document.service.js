@@ -11,7 +11,12 @@ const CATEGORIES = ['ACCOUNTS', 'REGISTRATION', 'BYLAWS', 'OTHER'];
 async function upload({ title, category, description, fileName, fileMimeType, fileData, uploadedById }) {
   if (!title || !title.trim()) throw ApiError.badRequest('A title is required.');
   if (!CATEGORIES.includes(category)) throw ApiError.badRequest(`Category must be one of: ${CATEGORIES.join(', ')}`);
-  if (!fileData) throw ApiError.badRequest('No file was provided.');
+  if (!fileData || typeof fileData !== 'string') throw ApiError.badRequest('No file was provided.');
+  if (!fileName || !String(fileName).trim()) throw ApiError.badRequest('A file name is required.');
+  if (!fileMimeType || !String(fileMimeType).trim()) throw ApiError.badRequest('A file type is required.');
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(fileData) || fileData.length % 4 !== 0) {
+    throw ApiError.badRequest('The uploaded file data is invalid. Please choose the file again.');
+  }
   const approxBytes = (fileData.length * 3) / 4;
   if (approxBytes > MAX_FILE_BYTES) {
     throw ApiError.badRequest('That file is too large. Please upload something under 10MB.');
@@ -21,7 +26,7 @@ async function upload({ title, category, description, fileName, fileMimeType, fi
     `INSERT INTO club_documents (title, category, description, file_name, file_mime_type, file_data, uploaded_by_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id, title, category, description, file_name, file_mime_type, uploaded_by_id, uploaded_at`,
-    [title.trim(), category, description || null, fileName, fileMimeType, fileData, uploadedById]
+    [title.trim(), category, description || null, String(fileName).trim().replace(/[\r\n\"\\]/g, '_'), String(fileMimeType).trim(), fileData, uploadedById]
   );
   return rows[0];
 }

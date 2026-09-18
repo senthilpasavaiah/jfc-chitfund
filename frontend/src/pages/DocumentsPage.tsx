@@ -46,6 +46,13 @@ export default function DocumentsPage() {
       setFile(null);
       return;
     }
+    if (f.size > 10 * 1024 * 1024) {
+      setFile(null);
+      setFormError('That file is too large. Please choose a file under 10MB.');
+      e.target.value = '';
+      return;
+    }
+    setFormError(null);
     const dataUrl: string = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);

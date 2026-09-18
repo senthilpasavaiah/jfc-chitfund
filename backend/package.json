@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "start": "node src/server.js",
+    "start": "npm run db:ensure-documents && node src/server.js",
     "test": "jest --runInBand --detectOpenHandles",
     "test:watch": "jest --watch",
     "prisma:generate": "prisma generate",
@@ -14,7 +14,8 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "node prisma/seed.js",
     "prisma:studio": "prisma studio",
-    "lint": "eslint src --ext .js"
+    "lint": "eslint src --ext .js",
+    "db:ensure-documents": "node prisma/ensure-club-documents.js"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
