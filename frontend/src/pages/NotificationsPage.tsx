@@ -219,9 +219,16 @@ export default function NotificationsPage() {
 
       {!error && notifications && notifications.length > 0 && (
         <div className="ledger-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-navy text-white text-xs uppercase tracking-wide">
+          <table className="w-full table-fixed text-sm">
+            <colgroup>
+              <col className="w-[92px]" />
+              <col className="w-[18%]" />
+              <col className="w-[82px]" />
+              <col />
+              <col className="w-[82px]" />
+              {canCreate && <col className="w-[72px]" />}
+            </colgroup>
+            <thead className="bg-navy text-white text-xs uppercase tracking-wide">
                 <tr>
                   <th className="text-left px-4 py-3">Date</th>
                   <th className="text-left px-4 py-3">Recipient</th>
@@ -234,22 +241,22 @@ export default function NotificationsPage() {
               <tbody>
                 {notifications.map((n, idx) => (
                   <tr key={n.id} className={`border-t border-line ${idx % 2 === 0 ? 'bg-white' : 'bg-paper/50'}`}>
-                    <td className="px-4 py-3 text-ink-muted whitespace-nowrap">
+                    <td className="px-4 py-3 text-ink-muted align-top whitespace-normal break-words">
                       {new Date(n.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </td>
-                    <td className="px-4 py-3 font-medium">{n.member_name || '—'}</td>
-                    <td className="px-4 py-3">{CHANNEL_LABEL[n.channel] || n.channel}</td>
-                    <td className="px-4 py-3 max-w-md">
-                      {n.subject && <div className="font-medium">{n.subject}</div>}
-                      <div className="text-ink-muted truncate">{n.body}</div>
+                    <td className="px-4 py-3 font-medium align-top whitespace-normal break-words">{n.member_name || '—'}</td>
+                    <td className="px-4 py-3 align-top whitespace-normal break-words">{CHANNEL_LABEL[n.channel] || n.channel}</td>
+                    <td className="px-4 py-3 align-top min-w-0 whitespace-normal break-words">
+                      {n.subject && <div className="font-medium whitespace-normal break-words">{n.subject}</div>}
+                      <div className="text-ink-muted whitespace-normal break-words">{n.body}</div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 align-top whitespace-normal break-words">
                       <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[n.status] || 'bg-line text-ink-muted'}`}>
                         {n.status}
                       </span>
                     </td>
                     {canCreate && (
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-2 py-3 text-right align-top">
                         <button
                           type="button"
                           onClick={() => handleDelete(n.id)}
@@ -263,8 +270,7 @@ export default function NotificationsPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+          </table>
         </div>
       )}
     </div>

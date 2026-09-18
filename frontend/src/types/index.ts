@@ -150,16 +150,7 @@ export interface NotificationRow {
   status: 'PENDING' | 'LOGGED' | 'FAILED';
   created_at: string;
 }
-export interface ClubDocument {
-  id: string;
-  title: string;
-  category: 'ACCOUNTS' | 'REGISTRATION' | 'BYLAWS' | 'OTHER';
-  description: string | null;
-  file_name: string;
-  file_mime_type: string;
-  uploaded_by_name: string | null;
-  uploaded_at: string;
-}
+
 export interface ClubDocument {
   id: string;
   title: string;
