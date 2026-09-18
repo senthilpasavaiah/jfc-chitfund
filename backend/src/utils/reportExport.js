@@ -168,44 +168,72 @@ function toPDF(report) {
       return false;
     }
 
-    function drawTableHeaderRow(cols, rowH) {
+    function drawTableHeaderRow(cols, minRowH) {
       const x0 = PAGE_MARGINS.left;
       const y = doc.y;
+      doc.font('Helvetica-Bold').fontSize(9.5);
+      // Height is measured from the actual (possibly-wrapping) label text,
+      // not a fixed guess - a header row can wrap just like a data row.
+      const rowH = Math.max(minRowH, ...cols.map((col) => doc.heightOfString(col.label, { width: col.width - 16 }) + 12));
       doc.rect(x0, y, contentW, rowH).fill(NAVY_HEX);
       let cx = x0;
-      doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#FFFFFF');
+      doc.fillColor('#FFFFFF');
       cols.forEach((col) => {
-        doc.text(col.label, cx + 8, y + 7, { width: col.width - 16, align: col.align || 'left' });
+        const textH = doc.heightOfString(col.label, { width: col.width - 16, align: col.align || 'left' });
+        doc.text(col.label, cx + 8, y + (rowH - textH) / 2, { width: col.width - 16, align: col.align || 'left' });
         cx += col.width;
       });
       doc.y = y + rowH;
+      return rowH;
     }
 
-    function drawDataRow(cols, values, { zebra, bold, bg, textColor } = {}, rowH) {
+    function drawDataRow(cols, values, { zebra, bold, bg, textColor } = {}, minRowH) {
       const x0 = PAGE_MARGINS.left;
       const y = doc.y;
+      const fontName = bold ? 'Helvetica-Bold' : 'Helvetica';
+      doc.font(fontName).fontSize(9.5);
+      // Row height follows whichever cell needs the most lines - e.g. a
+      // long chit label wrapping to 2-3 lines - so wrapped text always has
+      // room and never overlaps the row below it. Padding (6pt top + 6pt
+      // bottom) matches the single-line case exactly, so a normal
+      // one-line row comes out the same height as before.
+      const rowH = Math.max(minRowH, ...cols.map((col, i) => doc.heightOfString(String(values[i]), { width: col.width - 16 }) + 12));
       const fillColor = bg || (zebra ? ZEBRA_HEX : null);
       if (fillColor) doc.rect(x0, y, contentW, rowH).fill(fillColor);
       let cx = x0;
-      doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9.5).fillColor(textColor || '#1A1A1A');
+      doc.fillColor(textColor || '#1A1A1A');
       cols.forEach((col, i) => {
-        doc.text(String(values[i]), cx + 8, y + 6, { width: col.width - 16, align: col.align || 'left' });
+        const text = String(values[i]);
+        const textH = doc.heightOfString(text, { width: col.width - 16, align: col.align || 'left' });
+        // Vertically centered within the row, whatever its height ended up
+        // being - a short "Rs. 5,000" and a wrapped 3-line label in the
+        // row next to it both sit centered in their own cell.
+        doc.text(text, cx + 8, y + (rowH - textH) / 2, { width: col.width - 16, align: col.align || 'left' });
         cx += col.width;
       });
       doc.moveTo(x0, y + rowH).lineTo(x0 + contentW, y + rowH).lineWidth(0.5).strokeColor(BORDER_HEX).stroke();
       doc.y = y + rowH;
+      return rowH;
     }
 
     // A bank/credit-card-statement-style table: shaded header row (repeats
     // on every continuation page), zebra-striped body rows, a light rule
     // under each row - instead of the plain colon-separated text lines
-    // this export used to produce.
+    // this export used to produce. Row heights are measured from each
+    // row's own content (see drawDataRow/drawTableHeaderRow) rather than
+    // fixed, so a short row isn't padded with dead space and a long
+    // wrapped row never overlaps the next one.
     function drawTable({ columns, rows, rowH = 22, headerRowH = 24 }) {
       const cols = columns.map((c) => ({ ...c, width: c.width * contentW }));
-      ensureSpace(headerRowH);
+      // Measuring needs the row's font active first (bold rows read taller).
+      doc.font('Helvetica-Bold').fontSize(9.5);
+      const measuredHeaderH = Math.max(headerRowH, ...cols.map((col) => doc.heightOfString(col.label, { width: col.width - 16 }) + 12));
+      ensureSpace(measuredHeaderH);
       drawTableHeaderRow(cols, headerRowH);
       rows.forEach((row, i) => {
-        ensureSpace(rowH, () => drawTableHeaderRow(cols, headerRowH));
+        doc.font(row.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9.5);
+        const measuredRowH = Math.max(rowH, ...cols.map((col, ci) => doc.heightOfString(String(row.values[ci]), { width: col.width - 16 }) + 12));
+        ensureSpace(measuredRowH, () => drawTableHeaderRow(cols, headerRowH));
         drawDataRow(cols, row.values, { zebra: !row.bold && i % 2 === 1, bold: row.bold, bg: row.bg, textColor: row.textColor }, rowH);
       });
     }
@@ -231,12 +259,24 @@ function toPDF(report) {
     });
 
     doc.moveDown(0.7);
-    ensureSpace(34);
+    // Same "measure the actual text, then center it" approach as the table
+    // rows above - the label and value are on the same line here, so the
+    // bar's height is driven by whichever of the two is taller (matters if
+    // either ever wraps on a narrow page).
+    doc.font('Helvetica-Bold').fontSize(11);
+    const netLabelH = doc.heightOfString('Net Profit / Surplus', { width: contentW * 0.6 - 12 });
+    doc.fontSize(12);
+    const netValueText = formatINR(report.association.netProfit);
+    const netValueH = doc.heightOfString(netValueText, { width: contentW - 12 });
+    const barH = Math.max(netLabelH, netValueH) + 16;
+    ensureSpace(barH);
     const barY = doc.y;
-    doc.rect(PAGE_MARGINS.left, barY, contentW, 34).fill(NAVY_HEX);
-    doc.font('Helvetica-Bold').fontSize(11).fillColor('#FFFFFF').text('Net Profit / Surplus', PAGE_MARGINS.left + 12, barY + 10, { width: contentW * 0.6, align: 'left' });
-    doc.font('Helvetica-Bold').fontSize(12).fillColor('#F0C674').text(formatINR(report.association.netProfit), PAGE_MARGINS.left, barY + 9, { width: contentW - 12, align: 'right' });
-    doc.y = barY + 34;
+    doc.rect(PAGE_MARGINS.left, barY, contentW, barH).fill(NAVY_HEX);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#FFFFFF')
+      .text('Net Profit / Surplus', PAGE_MARGINS.left + 12, barY + (barH - netLabelH) / 2, { width: contentW * 0.6 - 12, align: 'left' });
+    doc.font('Helvetica-Bold').fontSize(12).fillColor('#F0C674')
+      .text(netValueText, PAGE_MARGINS.left, barY + (barH - netValueH) / 2, { width: contentW - 12, align: 'right' });
+    doc.y = barY + barH;
     doc.moveDown(1.1);
 
     ensureSpace(40);
