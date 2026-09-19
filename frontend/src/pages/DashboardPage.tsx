@@ -135,7 +135,7 @@ export default function DashboardPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#e3e8ef" />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `₹${Math.round(v / 1000)}k`} />
-                <Tooltip formatter={(v: number) => formatINR(Number(v))} />
+                <Tooltip formatter={(v) => formatINR(Number(v ?? 0))} />
                 <Line type="monotone" dataKey="balance" name="Fund balance" stroke="#003366" strokeWidth={3} dot={{ r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
@@ -153,7 +153,7 @@ export default function DashboardPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#e3e8ef" />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `₹${Math.round(v / 1000)}k`} />
-                <Tooltip formatter={(v: number) => formatINR(Number(v))} />
+                <Tooltip formatter={(v) => formatINR(Number(v ?? 0))} />
                 <Legend />
                 <Bar dataKey="income" name="Income" fill="#16a34a" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="expenses" name="Expenses" fill="#c0392b" radius={[4, 4, 0, 0]} />
