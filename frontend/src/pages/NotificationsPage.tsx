@@ -122,8 +122,8 @@ export default function NotificationsPage() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <p className="text-ink-muted text-sm">
-          Every reminder/OTP "intent" the app has logged (e.g. password resets, drawer assignments) is shown here in the
-          JFC portal. External delivery through WhatsApp/SMS/Email is not enabled at this time.
+          Common portal announcements and draw results are visible to every member. Individual notifications are visible only to their selected recipient.
+          External delivery through WhatsApp/SMS/Email is not enabled at this time.
         </p>
         {canCreate && (
           <button
