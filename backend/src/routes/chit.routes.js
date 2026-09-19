@@ -119,7 +119,7 @@ router.post(
 router.get('/:id/months/:monthIndex/payment-proof', monthParams, validate, requireChitAccess, paymentProofController.getForMonth);
 router.post(
   '/:id/months/:monthIndex/payment-manual',
-  authorize('ADMIN', 'MANAGER'),
+  authorize('ADMIN', 'MANAGER', 'COLLECTOR'),
   [...monthParams, body('memberId').isUUID()],
   validate,
   paymentProofController.markManual

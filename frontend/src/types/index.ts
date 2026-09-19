@@ -181,4 +181,5 @@ export interface DashboardSummary {
   accruedProfit: number;
   finalSettlementValue: number;
   currentMonthDrawers: CurrentMonthDrawer[];
+  fundGrowth: { openingBalance: number; series: { month: string; income: number; expenses: number; balance: number }[] };
 }
