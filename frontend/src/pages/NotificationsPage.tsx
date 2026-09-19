@@ -3,13 +3,14 @@ import client from '../api/client';
 import type { NotificationRow, Member } from '../types';
 import { useAuth } from '../context/AuthContext';
 
-const CHANNEL_LABEL: Record<string, string> = { SMS: 'SMS', WHATSAPP: 'WhatsApp', EMAIL: 'Email', PUSH: 'Push' };
+const CHANNEL_LABEL: Record<string, string> = { SMS: 'Portal', WHATSAPP: 'Portal', EMAIL: 'Portal', PUSH: 'Portal' };
 const STATUS_STYLES: Record<string, string> = {
   LOGGED: 'bg-line text-ink-muted',
   PENDING: 'bg-gold/15 text-gold-dim',
   FAILED: 'bg-danger/10 text-danger',
 };
 
+// The current application is Portal-only. Keep the legacy API channel value internally for backward compatibility.
 const EMPTY_FORM = { memberIds: [] as string[], allMembers: false, channel: 'WHATSAPP', subject: '', body: '' };
 
 export default function NotificationsPage() {
@@ -121,8 +122,8 @@ export default function NotificationsPage() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <p className="text-ink-muted text-sm">
-          Every reminder/OTP "intent" the app has logged (e.g. password resets, drawer assignments) — nothing is
-          actually sent via WhatsApp/SMS/Email yet, see NOTIFICATIONS.md for how to go live.
+          Every reminder/OTP "intent" the app has logged (e.g. password resets, drawer assignments) is shown here in the
+          JFC portal. External delivery through WhatsApp/SMS/Email is not enabled at this time.
         </p>
         {canCreate && (
           <button
@@ -166,17 +167,8 @@ export default function NotificationsPage() {
             <p className="mt-1 text-xs text-ink-muted">{selectedLabel}</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <select
-              value={form.channel}
-              onChange={(e) => setForm({ ...form, channel: e.target.value })}
-              className="rounded-lg border border-line px-3 py-2 text-sm"
-            >
-              <option value="WHATSAPP">WhatsApp</option>
-              <option value="SMS">SMS</option>
-              <option value="EMAIL">Email</option>
-              <option value="PUSH">Push</option>
-            </select>
+          <div className="rounded-lg border border-line bg-paper/60 px-3 py-2 text-sm text-ink-muted">
+            <span className="font-medium text-ink">Channel:</span> Portal
           </div>
           <input
             placeholder="Subject (optional)"
@@ -193,8 +185,7 @@ export default function NotificationsPage() {
             className="w-full rounded-lg border border-line px-3 py-2 text-sm"
           />
           <p className="text-xs text-ink-muted">
-            This only logs the message here (same as every other notification in this app) — nothing is actually sent
-            via WhatsApp/SMS/Email yet.
+            This logs the message inside the JFC portal. External delivery is not enabled yet.
           </p>
           {formError && <p className="text-sm text-danger">{formError}</p>}
           <button
@@ -220,38 +211,38 @@ export default function NotificationsPage() {
       {!error && notifications && notifications.length > 0 && (
         <div className="ledger-card overflow-hidden">
           <div className="table-scroll">
-          <table className="min-w-[820px] w-full table-auto text-sm">
+          <table className="min-w-[960px] w-full table-fixed text-sm">
             <colgroup>
-              <col className="w-[92px]" />
-              <col className="w-[18%]" />
-              <col className="w-[82px]" />
-              <col />
-              <col className="w-[82px]" />
-              {canCreate && <col className="w-[72px]" />}
+              <col className="w-[120px]" />
+              <col className="w-[190px]" />
+              <col className="w-[110px]" />
+              <col className="w-[380px]" />
+              <col className="w-[100px]" />
+              {canCreate && <col className="w-[100px]" />}
             </colgroup>
             <thead className="bg-navy text-white text-xs uppercase tracking-wide">
                 <tr>
-                  <th className="text-left px-4 py-3">Date</th>
-                  <th className="text-left px-4 py-3">Recipient</th>
-                  <th className="text-left px-4 py-3">Channel</th>
-                  <th className="text-left px-4 py-3">Message</th>
-                  <th className="text-left px-4 py-3">Status</th>
-                  {canCreate && <th className="text-right px-4 py-3">Action</th>}
+                  <th className="text-left px-4 py-3 whitespace-nowrap">Date</th>
+                  <th className="text-left px-4 py-3 whitespace-nowrap">Recipient</th>
+                  <th className="text-left px-4 py-3 whitespace-nowrap">Channel</th>
+                  <th className="text-left px-4 py-3 whitespace-nowrap">Message</th>
+                  <th className="text-left px-4 py-3 whitespace-nowrap">Status</th>
+                  {canCreate && <th className="text-right px-4 py-3 whitespace-nowrap">Action</th>}
                 </tr>
               </thead>
               <tbody>
                 {notifications.map((n, idx) => (
                   <tr key={n.id} className={`border-t border-line ${idx % 2 === 0 ? 'bg-white' : 'bg-paper/50'}`}>
-                    <td className="px-4 py-3 text-ink-muted align-top whitespace-normal break-words">
+                    <td className="px-4 py-3 text-ink-muted align-top whitespace-nowrap">
                       {new Date(n.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </td>
                     <td className="px-4 py-3 font-medium align-top whitespace-normal break-words">{n.member_name || '—'}</td>
-                    <td className="px-4 py-3 align-top whitespace-normal break-words">{CHANNEL_LABEL[n.channel] || n.channel}</td>
+                    <td className="px-4 py-3 align-top whitespace-nowrap">{CHANNEL_LABEL[n.channel] || 'Portal'}</td>
                     <td className="px-4 py-3 align-top min-w-0 whitespace-normal break-words">
                       {n.subject && <div className="font-medium whitespace-normal break-words">{n.subject}</div>}
                       <div className="text-ink-muted whitespace-normal break-words">{n.body}</div>
                     </td>
-                    <td className="px-4 py-3 align-top whitespace-normal break-words">
+                    <td className="px-4 py-3 align-top whitespace-nowrap">
                       <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[n.status] || 'bg-line text-ink-muted'}`}>
                         {n.status}
                       </span>

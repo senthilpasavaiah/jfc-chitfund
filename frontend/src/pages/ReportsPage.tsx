@@ -255,7 +255,8 @@ export default function ReportsPage() {
       {mgmt && (
         <div className="space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium w-fit">
+            <div className="overflow-x-auto max-w-full">
+            <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium w-max">
               {([
                 { key: 'previous', label: 'Previous Management' },
                 { key: 'new', label: 'New Management' },
@@ -269,11 +270,12 @@ export default function ReportsPage() {
                 </button>
               ))}
             </div>
+            </div>
             {management === 'previous' && (
               <span className="text-xs text-ink-muted">Up to 30 Jun 2026 — frozen, read-only</span>
             )}
             {management === 'new' && (
-              <span className="text-xs text-ink-muted">From July 1st 2026</span>
+              <span className="text-xs text-ink-muted pl-6">From July 1st 2026</span>
             )}
           </div>
 
@@ -321,7 +323,8 @@ export default function ReportsPage() {
       <>
       <div className="ledger-card p-4 space-y-3">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium">
+          <div className="overflow-x-auto max-w-full">
+          <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium w-max">
             {PERIOD_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
@@ -331,6 +334,7 @@ export default function ReportsPage() {
                 {opt.label}
               </button>
             ))}
+          </div>
           </div>
           <div className="flex gap-2 ml-auto">
             {(['csv', 'xlsx', 'pdf'] as const).map((fmt) => (
