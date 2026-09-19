@@ -12,10 +12,9 @@ router.get('/', async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 200);
   const offset = Number(req.query.offset) || 0;
 
-  // Admins/managers can view the notification log. Regular members can
-  // view their own portal notifications only. This must not depend on
-  // chit participation: a member who is not in any chit can still receive
-  // general/admin notifications.
+  // Admins/managers can view the complete notification log. Every authenticated
+  // member can view all GENERAL portal announcements plus any PERSONAL
+  // notification addressed to that member. Chit participation is irrelevant.
   const notifications = (req.user.role === 'ADMIN' || req.user.role === 'MANAGER')
     ? await notificationService.list({ limit, offset })
     : req.user.memberId
@@ -52,7 +51,7 @@ router.post(
       body: req.body.body,
       createdById: req.user.id,
     });
-    await recordAudit({ userId: req.user.id, action: 'NOTIFICATION_CREATE', entityType: 'Notification', entityId: notification.id, metadata: { channel: notification.channel, memberId: notification.member_id }, ipAddress: req.ip });
+    await recordAudit({ userId: req.user.id, action: 'NOTIFICATION_CREATE', entityType: 'Notification', entityId: notification[0]?.id, metadata: { channel: notification[0]?.channel, memberId: notification[0]?.member_id, count: notification.length }, ipAddress: req.ip });
     res.status(201).json({ success: true, data: notification });
   }
 );
