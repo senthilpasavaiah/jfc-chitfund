@@ -34,7 +34,7 @@ async function listForMember(memberId, { limit = 50, offset = 0 } = {}) {
   return rows;
 }
 
-/** Admin-only view of every logged notification, newest first. */
+/** Admin/manager view of every logged notification, newest first. */
 async function list({ limit = 100, offset = 0 } = {}) {
   const { rows } = await query(
     `SELECT n.*, m.name AS member_name

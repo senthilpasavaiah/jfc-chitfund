@@ -8,10 +8,20 @@ const { recordAudit } = require('../utils/audit');
 const router = express.Router();
 router.use(authenticate);
 
-router.get('/', authorize('ADMIN', 'MANAGER'), async (req, res) => {
+router.get('/', async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 200);
   const offset = Number(req.query.offset) || 0;
-  const notifications = await notificationService.list({ limit, offset });
+
+  // Admins/managers can view the notification log. Regular members can
+  // view their own portal notifications only. This must not depend on
+  // chit participation: a member who is not in any chit can still receive
+  // general/admin notifications.
+  const notifications = (req.user.role === 'ADMIN' || req.user.role === 'MANAGER')
+    ? await notificationService.list({ limit, offset })
+    : req.user.memberId
+      ? await notificationService.listForMember(req.user.memberId, { limit, offset })
+      : [];
+
   res.json({ success: true, data: notifications });
 });
 
