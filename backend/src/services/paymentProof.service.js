@@ -137,7 +137,7 @@ async function listPending(chitId) {
      JOIN chit_month_data cmd ON cmd.id = p.chit_month_data_id
      JOIN chits c ON c.id = cmd.chit_id
      JOIN members m ON m.id = p.member_id
-     WHERE c.is_test = FALSE AND p.status = 'pending' AND ($1::uuid IS NULL OR cmd.chit_id = $1)
+     WHERE p.status = 'pending' AND ($1::uuid IS NULL OR cmd.chit_id = $1)
      ORDER BY p.created_at ASC`,
     [chitId || null]
   );

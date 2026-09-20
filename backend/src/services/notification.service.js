@@ -26,15 +26,24 @@ async function dispatch({ memberId, channel, type, subject = null, body, created
   return rows[0];
 }
 
-async function listForMember(memberId, { limit = 50, offset = 0 } = {}) {
+async function listForMember(memberId, { limit = 100, offset = 0 } = {}) {
+  // GENERAL notifications are common portal announcements and must be visible
+  // to every authenticated member. Personal notifications remain restricted
+  // to their intended member.
   const { rows } = await query(
-    `SELECT * FROM notifications WHERE member_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+    `SELECT n.*, m.name AS member_name
+     FROM notifications n
+     LEFT JOIN members m ON m.id = n.member_id
+     WHERE (n.type = 'GENERAL' AND n.member_id IS NULL)
+        OR n.member_id = $1
+     ORDER BY n.created_at DESC
+     LIMIT $2 OFFSET $3`,
     [memberId, limit, offset]
   );
   return rows;
 }
 
-/** Admin-only view of every logged notification, newest first. */
+/** Admin/manager view of every logged notification, newest first. */
 async function list({ limit = 100, offset = 0 } = {}) {
   const { rows } = await query(
     `SELECT n.*, m.name AS member_name
@@ -69,18 +78,33 @@ async function create({ memberId, memberIds, allMembers = false, channel, subjec
     recipientIds = rows.map((row) => row.id);
   }
 
-  if (!recipientIds.length) throw ApiError.badRequest('Select at least one recipient or choose All active members.');
+  if (!allMembers && !recipientIds.length) throw ApiError.badRequest('Select at least one recipient or choose All members.');
 
-  const { rows: memberRows } = await query(
-    `SELECT id FROM members WHERE id = ANY($1::uuid[])`,
-    [recipientIds]
-  );
-  if (memberRows.length !== recipientIds.length) throw ApiError.notFound('One or more selected members were not found.');
+  if (!allMembers) {
+    const { rows: memberRows } = await query(
+      `SELECT id FROM members WHERE id = ANY($1::uuid[])`,
+      [recipientIds]
+    );
+    if (memberRows.length !== recipientIds.length) throw ApiError.notFound('One or more selected members were not found.');
+  }
 
   const cleanSubject = subject && subject.trim() ? subject.trim() : null;
   const cleanBody = body.trim();
 
   return withTransaction(async (client) => {
+    // A common/general notification is stored once with no member_id, so every
+    // authenticated member can see it. Selected notifications remain one row
+    // per recipient and are visible only to that recipient.
+    if (allMembers) {
+      const { rows } = await client.query(
+        `INSERT INTO notifications (member_id, channel, type, subject, body, status, created_by_id)
+         VALUES (NULL, $1, 'GENERAL', $2, $3, 'LOGGED', $4)
+         RETURNING *`,
+        [channel, cleanSubject, cleanBody, createdById]
+      );
+      return rows;
+    }
+
     const created = [];
     for (const id of recipientIds) {
       const { rows } = await client.query(

@@ -161,7 +161,6 @@ model Member {
   aadhaarLast4     String? // safe to display/search on
 
   status           MemberStatus @default(ACTIVE)
-  isTest           Boolean      @default(false)
   joinedDate       DateTime  @default(now())
   notes            String?
 
@@ -212,7 +211,6 @@ model Chit {
   startDate         DateTime?
   endDate           DateTime?
   status            ChitStatus @default(DRAFT)
-  isTest            Boolean    @default(false)
 
   members           ChitMember[]
   installments      Installment[]

@@ -8,10 +8,20 @@ const { recordAudit } = require('../utils/audit');
 const router = express.Router();
 router.use(authenticate);
 
-router.get('/', authorize('ADMIN', 'MANAGER'), async (req, res) => {
+router.get('/', async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 200);
   const offset = Number(req.query.offset) || 0;
-  const notifications = await notificationService.list({ limit, offset });
+
+  // Admins/managers can view the complete notification log. Every authenticated
+  // member can view common GENERAL portal announcements plus notifications
+  // addressed to that member. Chit-specific automatic notifications are stored
+  // once per participant, so only participants receive them.
+  const notifications = (req.user.role === 'ADMIN' || req.user.role === 'MANAGER')
+    ? await notificationService.list({ limit, offset })
+    : req.user.memberId
+      ? await notificationService.listForMember(req.user.memberId, { limit, offset })
+      : [];
+
   res.json({ success: true, data: notifications });
 });
 
@@ -42,7 +52,7 @@ router.post(
       body: req.body.body,
       createdById: req.user.id,
     });
-    await recordAudit({ userId: req.user.id, action: 'NOTIFICATION_CREATE', entityType: 'Notification', entityId: notification.id, metadata: { channel: notification.channel, memberId: notification.member_id }, ipAddress: req.ip });
+    await recordAudit({ userId: req.user.id, action: 'NOTIFICATION_CREATE', entityType: 'Notification', entityId: notification[0]?.id, metadata: { channel: notification[0]?.channel, memberId: notification[0]?.member_id, count: notification.length }, ipAddress: req.ip });
     res.status(201).json({ success: true, data: notification });
   }
 );

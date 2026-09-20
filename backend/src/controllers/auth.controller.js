@@ -93,7 +93,7 @@ async function forgotPassword(req, res) {
     // No live SMS/WhatsApp provider is connected in this build - the reset
     // "message" is logged to the notifications table instead of sent.
     await notificationService.dispatch({
-      memberId: null,
+      memberId: result.memberId,
       channel: 'SMS',
       type: 'GENERAL',
       subject: 'Password reset requested',
