@@ -66,6 +66,6 @@
   }
   .ledger-card:has(> table) > table,
   .table-scroll > table {
-    min-width: 680px;
+    min-width: 960px;
   }
 }

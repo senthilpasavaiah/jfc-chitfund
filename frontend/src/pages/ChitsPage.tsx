@@ -30,8 +30,6 @@ export default function ChitsPage() {
   const { user } = useAuth();
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
   const [tab, setTab] = useState<'ongoing' | 'upcoming' | 'completed'>('ongoing');
-  const [testMode, setTestMode] = useState(false);
-  const [creatingTest, setCreatingTest] = useState(false);
   const [sortBy, setSortBy] = useState<'refNumber' | 'valueLakh' | 'startDate'>('refNumber');
   const [chits, setChits] = useState<Chit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +43,7 @@ export default function ChitsPage() {
 
   async function load() {
     setLoading(true);
-    const res = await client.get('/chits', { params: { tab, test: testMode || undefined } });
+    const res = await client.get('/chits', { params: { tab } });
     setChits(res.data.data);
     setLoading(false);
   }
@@ -53,21 +51,7 @@ export default function ChitsPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, testMode]);
-
-  async function createTestChit() {
-    if (!window.confirm('Create the isolated JFC WhatsApp Test Chit? It uses only TEST members and is excluded from normal financial views.')) return;
-    setCreatingTest(true);
-    try {
-      await client.post('/chits/test-fixture');
-      setTestMode(true);
-      setTab('ongoing');
-    } catch (err: any) {
-      window.alert(err?.response?.data?.message || 'Could not create the test chit.');
-    } finally {
-      setCreatingTest(false);
-    }
-  }
+  }, [tab]);
 
   function toggleExpanded(chitId: string) {
     setExpandedIds((cur) => {
@@ -109,12 +93,6 @@ export default function ChitsPage() {
 
   return (
     <div className="space-y-4">
-      {testMode && (
-        <div className="rounded-lg border border-gold/30 bg-gold/10 px-4 py-3 text-sm">
-          <div className="font-bold text-gold-dim">TEST MODE — JFC WhatsApp Test Chit</div>
-          <div className="text-ink-muted mt-0.5">Test members and test chit activity are isolated from normal financial views.</div>
-        </div>
-      )}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex rounded-lg border border-line overflow-hidden text-sm font-medium">
@@ -128,25 +106,6 @@ export default function ChitsPage() {
               </button>
             ))}
           </div>
-          {canManage && (
-            <button
-              type="button"
-              onClick={createTestChit}
-              disabled={creatingTest}
-              className={`rounded-lg border px-3 py-2 text-sm font-medium cursor-pointer disabled:opacity-50 ${testMode ? 'border-gold bg-gold/10 text-gold-dim' : 'border-line bg-white text-ink-muted'}`}
-            >
-              {creatingTest ? 'Creating test…' : 'WhatsApp Test Chit'}
-            </button>
-          )}
-          {testMode && (
-            <button
-              type="button"
-              onClick={() => setTestMode(false)}
-              className="rounded-lg border border-line px-3 py-2 text-sm font-medium text-ink-muted cursor-pointer"
-            >
-              Back to Live Chits
-            </button>
-          )}
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
