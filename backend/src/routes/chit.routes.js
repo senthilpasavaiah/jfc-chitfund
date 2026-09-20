@@ -79,6 +79,13 @@ router.patch(
   validate,
   chitController.assignDraw
 );
+router.patch(
+  '/:id/months/:monthIndex/draw/change',
+  authorize('ADMIN', 'MANAGER'),
+  [...monthParams, body('memberId').isUUID().withMessage('Valid new drawer memberId is required')],
+  validate,
+  chitController.changeDraw
+);
 router.delete(
   '/:id/months/:monthIndex/draw',
   authorize('ADMIN', 'MANAGER'),
