@@ -43,7 +43,6 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   const [deleting, setDeleting] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
-  const [recalling, setRecalling] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [changingDrawer, setChangingDrawer] = useState(false);
   const [changeDrawerId, setChangeDrawerId] = useState('');
