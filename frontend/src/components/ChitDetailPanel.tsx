@@ -238,21 +238,6 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     }
   }
 
-  async function handleRecallDraw() {
-    if (!monthDetail?.drawnByMemberId || recalling) return; // guards against accidental double-submit
-    if (!window.confirm(`Recall ${monthDetail.drawnByName} as the drawer for ${monthDetail.label}? This month will re-open for Assign/Shuffle.`)) return;
-    setError(null);
-    setRecalling(true);
-    try {
-      await client.delete(`/chits/${id}/months/${selectedMonth}/draw`);
-      await Promise.all([loadMonth(selectedMonth), loadChit()]);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Could not recall the drawer.');
-    } finally {
-      setRecalling(false);
-    }
-  }
-
   async function handleShuffle() {
     if (!monthDetail) return;
     setError(null);
@@ -488,7 +473,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                     <div className="flex items-center gap-2 flex-wrap">
                       <select value={changeDrawerId} onChange={(e) => setChangeDrawerId(e.target.value)} className="h-9 rounded-md border border-line bg-white px-2 text-sm min-w-56">
                         <option value="">Select new drawer</option>
-                        {monthDetail.participants.filter((p) => p.memberId !== monthDetail.drawnByMemberId).map((p) => <option key={p.memberId + '-' + p.slotNumber} value={p.memberId}>{p.name}</option>)}
+                        {monthDetail.participants.filter((p) => p.memberId !== monthDetail.drawnByMemberId).map((p) => <option key={p.memberId} value={p.memberId}>{p.name}</option>)}
                       </select>
                       <button onClick={handleChangeDrawer} disabled={!changeDrawerId || changingDrawerSaving} className="h-9 bg-success text-white px-3 rounded-md text-xs font-medium disabled:opacity-40 cursor-pointer">{changingDrawerSaving ? 'Saving…' : 'Confirm Change'}</button>
                       <button onClick={() => { setChangingDrawer(false); setChangeDrawerId(''); }} className="h-9 border border-line bg-white px-3 rounded-md text-xs cursor-pointer">Cancel</button>
@@ -499,7 +484,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {monthDetail.participants.map((p) => (
                   <div
-                    key={`${p.memberId}-${p.slotNumber ?? ""}`}
+                    key={p.memberId}
                     className={`rounded-lg p-3 flex flex-col items-center gap-1.5 text-center transition-colors ${
                       p.isDrawer
                         ? 'border-2 border-gold bg-gold/10 shadow-sm'
