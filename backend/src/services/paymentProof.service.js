@@ -27,6 +27,7 @@ async function getOrCreateMonthData(chitId, monthIndex) {
  */
 async function submitProof({ chitId, monthIndex, memberId, imageData, imageMimeType, submittedById, autoConfirm = false }) {
   if (!imageData) throw ApiError.badRequest('No image was provided.');
+  await chitService.assertPaymentRequiredForMonth(chitId, monthIndex, memberId);
   const approxBytes = (imageData.length * 3) / 4;
   if (approxBytes > MAX_IMAGE_BYTES) {
     throw ApiError.badRequest('That image is too large. Please upload a screenshot under 6MB.');
@@ -108,12 +109,13 @@ async function reviewProof(proofId, { decision, reviewerUserId, rejectionReason 
   if (proof.status !== 'pending') throw ApiError.badRequest('This proof has already been reviewed.');
 
   if (decision === 'confirm') {
+    const { rows: mdRows } = await query('SELECT chit_id, month_index FROM chit_month_data WHERE id = $1', [proof.chit_month_data_id]);
+    const { chit_id: chitId, month_index: monthIndex } = mdRows[0];
+    await chitService.assertPaymentRequiredForMonth(chitId, monthIndex, proof.member_id);
     await query(
       `UPDATE chit_payment_proofs SET status = 'confirmed', reviewed_by_id = $1, reviewed_at = now() WHERE id = $2`,
       [reviewerUserId, proofId]
     );
-    const { rows: mdRows } = await query('SELECT chit_id, month_index FROM chit_month_data WHERE id = $1', [proof.chit_month_data_id]);
-    const { chit_id: chitId, month_index: monthIndex } = mdRows[0];
     await chitService.payForMonth(chitId, monthIndex, proof.member_id);
   } else if (decision === 'reject') {
     await query(
