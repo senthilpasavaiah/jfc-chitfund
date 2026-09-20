@@ -42,6 +42,7 @@ export interface Chit {
   monthsElapsed: number;
   monthsRemaining: number;
   createdAt: string;
+  isTest?: boolean;
   /** Present when the list was loaded for a logged-in viewer: whether they hold a slot in this chit. */
   isParticipant?: boolean;
   /** Present when the list was loaded for a logged-in viewer: whether they're allowed to open this chit (Admin/Manager, or a participant). */
@@ -77,7 +78,6 @@ export interface ChitDetail extends Chit {
 export interface ChitMonthParticipant {
   memberId: string;
   name: string;
-  slotNumber?: number;
   paid: boolean;
   isDrawer: boolean;
 }
@@ -182,5 +182,4 @@ export interface DashboardSummary {
   accruedProfit: number;
   finalSettlementValue: number;
   currentMonthDrawers: CurrentMonthDrawer[];
-  fundGrowth: { openingBalance: number; series: { month: string; income: number; expenses: number; balance: number }[] };
 }

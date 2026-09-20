@@ -39,7 +39,6 @@ export default function FundsPage() {
   const [chitProfit, setChitProfit] = useState<ChitProfitRow[]>([]);
   const [settlement, setSettlement] = useState<SettlementData | null>(null);
   const [liveChitRows, setLiveChitRows] = useState<LiveChitFinancial[]>([]);
-  const [collectionSummary, setCollectionSummary] = useState<{ expected: number; collected: number; pending: number; overdue: number; pendingCount: number } | null>(null);
   const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
   // Which management period the top summary and the tabs' data are
   // filtered by. Defaults to New Management whenever the page opens.
@@ -70,13 +69,6 @@ export default function FundsPage() {
     setChitProfit(c.data.data);
     setSettlement(st.data.data);
     setLiveChitRows(live.data.data);
-    try {
-      const today = new Date().toISOString().slice(0, 10);
-      const payments = await client.get('/payments/overview', { params: { from: '2026-07-01', to: today, status: 'ALL' } });
-      setCollectionSummary(payments.data.data.summary);
-    } catch {
-      setCollectionSummary(null);
-    }
     setLoading(false);
   }
 
@@ -295,23 +287,6 @@ export default function FundsPage() {
                 <Metric label="New Expenses" value={mgmt.newManagement.expenses} />
                 <Metric label="Current Balance" value={mgmt.newManagement.currentBalance} highlight />
               </div>
-              {collectionSummary && (
-                <div className="mt-4 border-t border-line pt-4">
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <div>
-                      <div className="font-medium text-sm">Member payment collection</div>
-                      <div className="text-xs text-ink-muted mt-0.5">New Management collection tracking — separate from fund balance.</div>
-                    </div>
-                    <Link to="/payments" className="text-xs text-navy underline whitespace-nowrap">Open Payments</Link>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <Metric label="Expected" value={collectionSummary.expected} />
-                    <Metric label="Collected" value={collectionSummary.collected} highlight />
-                    <Metric label="Pending" value={collectionSummary.pending} />
-                    <Metric label="Overdue" value={collectionSummary.overdue} />
-                  </div>
-                </div>
-              )}
             </div>
           )}
 

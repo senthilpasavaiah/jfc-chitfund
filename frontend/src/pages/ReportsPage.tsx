@@ -22,15 +22,6 @@ interface ChitSummaryRow {
 
 interface ReportData {
   period: string;
-  paymentCollections: {
-    expected: number;
-    collected: number;
-    pending: number;
-    overdue: number;
-    pendingCount: number;
-    paidCount: number;
-    byChit: { chitId: string; chitRef: string; expected: number; collected: number; pending: number; overdue: number }[];
-  };
   association: {
     income: { chitIncome: number; otherIncome: number; total: number };
     expenses: { chitExpenses: number; operatingExpenses: number; total: number };
@@ -394,43 +385,6 @@ export default function ReportsPage() {
                 {formatINR(report.association.netProfit)}
               </div>
             </div>
-          </div>
-
-          {/* Collection summary comes from the Payment page's unified member/chit payment source. */}
-          <div className="ledger-card p-4">
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <div>
-                <div className="font-medium">Member Payment Collection Summary</div>
-                <p className="text-xs text-ink-muted mt-0.5">Collection tracking is shown separately from Association income/profit.</p>
-              </div>
-              <span className="text-xs text-ink-muted">{report.paymentCollections.paidCount} paid • {report.paymentCollections.pendingCount} pending</span>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Metric label="Expected" value={report.paymentCollections.expected} />
-              <Metric label="Collected" value={report.paymentCollections.collected} highlight />
-              <Metric label="Pending" value={report.paymentCollections.pending} />
-              <Metric label="Overdue" value={report.paymentCollections.overdue} />
-            </div>
-            {report.paymentCollections.byChit.length > 0 && (
-              <div className="mt-4 table-scroll">
-                <table className="w-full min-w-[720px] text-sm">
-                  <thead className="bg-paper text-ink-muted text-xs uppercase tracking-wide">
-                    <tr><th className="text-left px-3 py-2">Chit</th><th className="text-right px-3 py-2">Expected</th><th className="text-right px-3 py-2">Collected</th><th className="text-right px-3 py-2">Pending</th><th className="text-right px-3 py-2">Overdue</th></tr>
-                  </thead>
-                  <tbody>
-                    {report.paymentCollections.byChit.map((c) => (
-                      <tr key={c.chitId} className="border-t border-line">
-                        <td className="px-3 py-2.5 font-medium">{c.chitRef}</td>
-                        <td className="px-3 py-2.5 text-right font-tabular">{formatINR(c.expected)}</td>
-                        <td className="px-3 py-2.5 text-right font-tabular text-success">{formatINR(c.collected)}</td>
-                        <td className="px-3 py-2.5 text-right font-tabular">{formatINR(c.pending)}</td>
-                        <td className="px-3 py-2.5 text-right font-tabular text-danger">{formatINR(c.overdue)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
 
           {/* 1. Association Income - where the money came from */}

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ResponsiveContainer, LineChart, Line, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import client from '../api/client';
 import type { DashboardSummary, ManagementSplit } from '../types';
 
@@ -113,56 +112,6 @@ export default function DashboardPage() {
 
       {mgmtView !== 'previous' && (
         <>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Members" value={String(summary.totalMembers)} accentBorder="#FFD700" />
-        <StatCard label="Active chits" value={String(summary.activeChits)} accentBorder="#2563eb" />
-        <StatCard label="Total income" value={formatINR(summary.totalIncome)} accentBorder="#16a34a" />
-        <StatCard label="Total expenses" value={formatINR(summary.totalExpenses)} accentBorder="#c0392b" />
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div className="ledger-card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="font-medium text-sm">Association Fund Growth</h3>
-              <p className="text-xs text-ink-muted mt-0.5">New Management fund balance — not profit.</p>
-            </div>
-            <span className="text-xs text-ink-muted">Opening {formatINR(summary.fundGrowth.openingBalance)}</span>
-          </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={summary.fundGrowth.series} margin={{ top: 8, right: 10, left: 8, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e3e8ef" />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `₹${Math.round(v / 1000)}k`} />
-                <Tooltip formatter={(v) => formatINR(Number(v ?? 0))} />
-                <Line type="monotone" dataKey="balance" name="Fund balance" stroke="#003366" strokeWidth={3} dot={{ r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="ledger-card p-4">
-          <div className="mb-3">
-            <h3 className="font-medium text-sm">Monthly Income vs Expenses</h3>
-            <p className="text-xs text-ink-muted mt-0.5">Money entering and leaving the Association fund.</p>
-          </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={summary.fundGrowth.series} margin={{ top: 8, right: 10, left: 8, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e3e8ef" />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `₹${Math.round(v / 1000)}k`} />
-                <Tooltip formatter={(v) => formatINR(Number(v ?? 0))} />
-                <Legend />
-                <Bar dataKey="income" name="Income" fill="#16a34a" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="expenses" name="Expenses" fill="#c0392b" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="ledger-card p-4">
           <div className="flex items-center justify-between mb-2">

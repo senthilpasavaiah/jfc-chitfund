@@ -43,10 +43,8 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   const [deleting, setDeleting] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
+  const [recalling, setRecalling] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [changingDrawer, setChangingDrawer] = useState(false);
-  const [changeDrawerId, setChangeDrawerId] = useState('');
-  const [changingDrawerSaving, setChangingDrawerSaving] = useState(false);
 
   // Tracks whether we've already auto-picked "the current month" for THIS
   // chit id. Previously the auto-pick logic ran on every loadChit() call
@@ -208,15 +206,10 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     }
   }
 
-  async function handleAssignDraw(memberId: string, replace = false) {
-    if (!monthDetail) return;
-    const message = replace
-      ? `Change the drawer for ${monthDetail.label} to ${monthDetail.participants.find((p) => p.memberId === memberId)?.name || 'the selected member'}?`
-      : `Assign ${monthDetail.participants.find((p) => p.memberId === memberId)?.name || 'the selected member'} as the drawer for ${monthDetail.label}?`;
-    if (!window.confirm(`${message}\n\nThis will be saved only after you confirm.`)) return;
+  async function handleAssignDraw(memberId: string) {
     setError(null);
     try {
-      await client.patch(`/chits/${id}/months/${selectedMonth}/draw`, { memberId, replace });
+      await client.patch(`/chits/${id}/months/${selectedMonth}/draw`, { memberId });
       loadMonth(selectedMonth);
       loadChit();
     } catch (err: any) {
@@ -224,23 +217,18 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     }
   }
 
-
-  async function handleChangeDrawer() {
-    if (!changeDrawerId || changingDrawerSaving || !monthDetail) return;
-    const newName = monthDetail.participants.find((p) => p.memberId === changeDrawerId)?.name || 'the selected member';
-    if (!window.confirm(`Change the drawer for ${monthDetail.label} from ${monthDetail.drawnByName} to ${newName}?\n\nThis will be saved only after you confirm.`)) return;
+  async function handleRecallDraw() {
+    if (!monthDetail?.drawnByMemberId || recalling) return; // guards against accidental double-submit
+    if (!window.confirm(`Recall ${monthDetail.drawnByName} as the drawer for ${monthDetail.label}? This month will re-open for Assign/Shuffle.`)) return;
     setError(null);
-    setChangingDrawerSaving(true);
+    setRecalling(true);
     try {
-      await client.patch(`/chits/${id}/months/${selectedMonth}/draw`, { memberId: changeDrawerId, replace: true });
-      setChangingDrawer(false);
-      setChangeDrawerId('');
+      await client.delete(`/chits/${id}/months/${selectedMonth}/draw`);
       await Promise.all([loadMonth(selectedMonth), loadChit()]);
-      setSuccessMessage('Drawer changed successfully.');
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Could not change the drawer.');
+      setError(err?.response?.data?.message || 'Could not recall the drawer.');
     } finally {
-      setChangingDrawerSaving(false);
+      setRecalling(false);
     }
   }
 
@@ -340,34 +328,30 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   // server-side in assignDraw/performShuffle:
   //  - a month that already has a drawn_by_member_id (assigned OR shuffled)
   //    can't be touched by either action again
-  // Drawer assignment is available for every normal month. Only a month
-  // that already has a drawer/shuffle result is locked for a fresh assignment.
-  // The Jolly Friends Club reserved month remains protected.
+  //  - only the single "current" month (isCurrentMonth) is actionable -
+  //    past months are settled, future months haven't opened yet
+  const monthIsPast = !!monthDetail && !monthDetail.isCurrentMonth && selectedMonth < chit.monthsElapsed;
+  const monthIsFuture = !!monthDetail && !monthDetail.isCurrentMonth && selectedMonth > chit.monthsElapsed;
   const drawerAlreadySet = !!monthDetail?.drawnByMemberId;
-  const assignLocked = !!monthDetail && (monthDetail.shuffled || drawerAlreadySet || monthDetail.isClub);
+  const assignLocked = !!monthDetail && (monthDetail.shuffled || drawerAlreadySet || !monthDetail.isCurrentMonth);
   const shuffleLocked = !!monthDetail && (monthDetail.isClub || monthDetail.shuffled || drawerAlreadySet || !monthDetail.isCurrentMonth);
-  const assignLockTitle = monthDetail?.isClub
-    ? "Month 2 is always Jolly Friends Club - no drawer assignment needed."
-    : monthDetail?.shuffled
-    ? "This month was already decided by shuffle - use Change Drawer if you need to correct it."
+  const monthLockReason = monthIsPast
+    ? 'This month has already passed.'
+    : monthIsFuture
+    ? "This month hasn't opened yet - only the current month is actionable."
+    : null;
+  const assignLockTitle = monthDetail?.shuffled
+    ? "This month was already decided by shuffle - the result is final."
     : drawerAlreadySet
     ? 'A drawer has already been assigned for this month.'
-    : undefined;
+    : monthLockReason || undefined;
   const shuffleLockTitle = monthDetail?.isClub
     ? "Month 2 is always Jolly Friends Club - no shuffle needed."
     : monthDetail?.shuffled
     ? 'Already used for this month - the result is final.'
     : drawerAlreadySet
     ? 'A drawer has already been assigned for this month.'
-    : !monthDetail?.isCurrentMonth
-    ? 'Shuffle is available only for the current month.'
-    : undefined;
-  // A member can occupy more than one slot in the same chit. Drawer selection
-  // is member-based, not slot-based, so the same member must appear only once
-  // in drawer-selection controls even when their name appears on multiple cards.
-  const uniqueDrawerParticipants = monthDetail
-    ? Array.from(new Map(monthDetail.participants.map((p) => [p.memberId, p])).values())
-    : [];
+    : monthLockReason || undefined;
 
   return (
     <div className="space-y-5">
@@ -395,6 +379,11 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
+      {isAdmin && monthDetail && monthLockReason && (
+        <p className="text-xs text-ink-muted bg-paper border border-line rounded-lg px-3 py-2">
+          🔒 {monthLockReason} Assign and Shuffle are only available for the current month.
+        </p>
+      )}
 
       {isAdmin && monthDetail && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -467,52 +456,25 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                   ))}
                 </div>
               )}
-              {monthDetail.drawnByMemberId && !monthDetail.isClub && (
-                <div className="mb-4 rounded-lg border border-gold bg-gold/10 p-3">
-                  {!changingDrawer ? (
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                      <div className="text-sm"><span className="font-semibold">Current drawer:</span> {monthDetail.drawnByName}</div>
-                      <button onClick={() => { setChangingDrawer(true); setChangeDrawerId(''); }} className="text-xs bg-navy text-white px-3 py-1.5 rounded-md font-medium cursor-pointer">Change Drawer</button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <select value={changeDrawerId} onChange={(e) => setChangeDrawerId(e.target.value)} className="h-9 rounded-md border border-line bg-white px-2 text-sm min-w-56">
-                        <option value="">Select new drawer</option>
-                        {uniqueDrawerParticipants.filter((p) => p.memberId !== monthDetail.drawnByMemberId).map((p) => <option key={p.memberId} value={p.memberId}>{p.name}</option>)}
-                      </select>
-                      <button onClick={handleChangeDrawer} disabled={!changeDrawerId || changingDrawerSaving} className="h-9 bg-success text-white px-3 rounded-md text-xs font-medium disabled:opacity-40 cursor-pointer">{changingDrawerSaving ? 'Saving…' : 'Confirm Change'}</button>
-                      <button onClick={() => { setChangingDrawer(false); setChangeDrawerId(''); }} className="h-9 border border-line bg-white px-3 rounded-md text-xs cursor-pointer">Cancel</button>
-                    </div>
-                  )}
-                </div>
-              )}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {monthDetail.participants.map((p, participantIndex) => {
-                  // A member may own multiple participations/slots in the same chit.
-                  // drawnByMemberId identifies the member, not every slot they own.
-                  // Show the drawer state on ONE participation card only, so the same
-                  // member is never visually selected in multiple places.
-                  const firstMemberIndex = monthDetail.participants.findIndex((participant) => participant.memberId === p.memberId);
-                  const isDisplayedDrawer = p.isDrawer && firstMemberIndex === participantIndex;
-
-                  return (
+                {monthDetail.participants.map((p) => (
                   <div
-                    key={`${p.memberId}-${participantIndex}`}
+                    key={p.memberId}
                     className={`rounded-lg p-3 flex flex-col items-center gap-1.5 text-center transition-colors ${
-                      isDisplayedDrawer
+                      p.isDrawer
                         ? 'border-2 border-gold bg-gold/10 shadow-sm'
                         : 'border border-line'
                     }`}
                   >
-                    {isDisplayedDrawer && (
+                    {p.isDrawer && (
                       <span className="text-[10px] font-bold uppercase tracking-wide text-gold-dim bg-gold/20 px-2 py-0.5 rounded-full">
                         🏆 Drawer
                       </span>
                     )}
-                    <div className={`w-10 h-10 rounded-full text-white flex items-center justify-center text-sm font-bold ${isDisplayedDrawer ? 'bg-gold-dim' : 'bg-navy'}`}>
+                    <div className={`w-10 h-10 rounded-full text-white flex items-center justify-center text-sm font-bold ${p.isDrawer ? 'bg-gold-dim' : 'bg-navy'}`}>
                       {initials(p.name)}
                     </div>
-                    <div className={`text-sm ${isDisplayedDrawer ? 'font-bold text-gold-dim' : 'font-medium'}`}>{p.name}</div>
+                    <div className={`text-sm ${p.isDrawer ? 'font-bold text-gold-dim' : 'font-medium'}`}>{p.name}</div>
                     <label className="flex items-center gap-1.5 text-xs text-ink-muted">
                       <span>Paid</span>
                       <button
@@ -536,19 +498,28 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                       </div>
                     )}
 
-                    {!monthDetail.isClub && !p.isDrawer && firstMemberIndex === participantIndex && (
+                    {!monthDetail.isClub && (
                       <button
                         onClick={() => handleAssignDraw(p.memberId)}
                         disabled={assignLocked}
-                        title={assignLockTitle}
+                        title={p.isDrawer ? undefined : assignLockTitle}
                         className="text-xs bg-navy/10 text-navy px-2.5 py-1 rounded-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        Assign as Drawer
+                        {p.isDrawer ? '✓ Assigned' : 'Assign as Drawer'}
+                      </button>
+                    )}
+                    {p.isDrawer && monthDetail.isCurrentMonth && (
+                      <button
+                        onClick={handleRecallDraw}
+                        disabled={recalling}
+                        title="Undo this assignment and re-open the month for Assign/Shuffle."
+                        className="text-xs text-danger underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {recalling ? 'Recalling…' : 'Recall'}
                       </button>
                     )}
                   </div>
-                  );
-                })}
+                ))}
               </div>
             </div>
           )}
