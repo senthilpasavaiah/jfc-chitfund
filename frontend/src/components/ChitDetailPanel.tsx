@@ -487,24 +487,32 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                 </div>
               )}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {monthDetail.participants.map((p, participantIndex) => (
+                {monthDetail.participants.map((p, participantIndex) => {
+                  // A member may own multiple participations/slots in the same chit.
+                  // drawnByMemberId identifies the member, not every slot they own.
+                  // Show the drawer state on ONE participation card only, so the same
+                  // member is never visually selected in multiple places.
+                  const firstMemberIndex = monthDetail.participants.findIndex((participant) => participant.memberId === p.memberId);
+                  const isDisplayedDrawer = p.isDrawer && firstMemberIndex === participantIndex;
+
+                  return (
                   <div
                     key={`${p.memberId}-${participantIndex}`}
                     className={`rounded-lg p-3 flex flex-col items-center gap-1.5 text-center transition-colors ${
-                      p.isDrawer
+                      isDisplayedDrawer
                         ? 'border-2 border-gold bg-gold/10 shadow-sm'
                         : 'border border-line'
                     }`}
                   >
-                    {p.isDrawer && (
+                    {isDisplayedDrawer && (
                       <span className="text-[10px] font-bold uppercase tracking-wide text-gold-dim bg-gold/20 px-2 py-0.5 rounded-full">
                         🏆 Drawer
                       </span>
                     )}
-                    <div className={`w-10 h-10 rounded-full text-white flex items-center justify-center text-sm font-bold ${p.isDrawer ? 'bg-gold-dim' : 'bg-navy'}`}>
+                    <div className={`w-10 h-10 rounded-full text-white flex items-center justify-center text-sm font-bold ${isDisplayedDrawer ? 'bg-gold-dim' : 'bg-navy'}`}>
                       {initials(p.name)}
                     </div>
-                    <div className={`text-sm ${p.isDrawer ? 'font-bold text-gold-dim' : 'font-medium'}`}>{p.name}</div>
+                    <div className={`text-sm ${isDisplayedDrawer ? 'font-bold text-gold-dim' : 'font-medium'}`}>{p.name}</div>
                     <label className="flex items-center gap-1.5 text-xs text-ink-muted">
                       <span>Paid</span>
                       <button
@@ -528,7 +536,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                       </div>
                     )}
 
-                    {!monthDetail.isClub && !p.isDrawer && monthDetail.participants.findIndex((participant) => participant.memberId === p.memberId) === participantIndex && (
+                    {!monthDetail.isClub && !p.isDrawer && firstMemberIndex === participantIndex && (
                       <button
                         onClick={() => handleAssignDraw(p.memberId)}
                         disabled={assignLocked}
@@ -539,7 +547,8 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                       </button>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
