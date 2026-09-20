@@ -209,6 +209,11 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   }
 
   async function handleAssignDraw(memberId: string, replace = false) {
+    if (!monthDetail) return;
+    const message = replace
+      ? `Change the drawer for ${monthDetail.label} to ${monthDetail.participants.find((p) => p.memberId === memberId)?.name || 'the selected member'}?`
+      : `Assign ${monthDetail.participants.find((p) => p.memberId === memberId)?.name || 'the selected member'} as the drawer for ${monthDetail.label}?`;
+    if (!window.confirm(`${message}\n\nThis will be saved only after you confirm.`)) return;
     setError(null);
     try {
       await client.patch(`/chits/${id}/months/${selectedMonth}/draw`, { memberId, replace });
@@ -221,11 +226,13 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
 
 
   async function handleChangeDrawer() {
-    if (!changeDrawerId || changingDrawerSaving) return;
+    if (!changeDrawerId || changingDrawerSaving || !monthDetail) return;
+    const newName = monthDetail.participants.find((p) => p.memberId === changeDrawerId)?.name || 'the selected member';
+    if (!window.confirm(`Change the drawer for ${monthDetail.label} from ${monthDetail.drawnByName} to ${newName}?\n\nThis will be saved only after you confirm.`)) return;
     setError(null);
     setChangingDrawerSaving(true);
     try {
-      await handleAssignDraw(changeDrawerId, true);
+      await client.patch(`/chits/${id}/months/${selectedMonth}/draw`, { memberId: changeDrawerId, replace: true });
       setChangingDrawer(false);
       setChangeDrawerId('');
       await Promise.all([loadMonth(selectedMonth), loadChit()]);
@@ -333,23 +340,19 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   // server-side in assignDraw/performShuffle:
   //  - a month that already has a drawn_by_member_id (assigned OR shuffled)
   //    can't be touched by either action again
-  //  - only the single "current" month (isCurrentMonth) is actionable -
-  //    past months are settled, future months haven't opened yet
-  const monthIsPast = !!monthDetail && !monthDetail.isCurrentMonth && selectedMonth < chit.monthsElapsed;
-  const monthIsFuture = !!monthDetail && !monthDetail.isCurrentMonth && selectedMonth > chit.monthsElapsed;
+  // Drawer assignment is available for every normal month. Only a month
+  // that already has a drawer/shuffle result is locked for a fresh assignment.
+  // The Jolly Friends Club reserved month remains protected.
   const drawerAlreadySet = !!monthDetail?.drawnByMemberId;
-  const assignLocked = !!monthDetail && (monthDetail.shuffled || drawerAlreadySet || !monthDetail.isCurrentMonth);
+  const assignLocked = !!monthDetail && (monthDetail.shuffled || drawerAlreadySet || monthDetail.isClub);
   const shuffleLocked = !!monthDetail && (monthDetail.isClub || monthDetail.shuffled || drawerAlreadySet || !monthDetail.isCurrentMonth);
-  const monthLockReason = monthIsPast
-    ? 'This month has already passed.'
-    : monthIsFuture
-    ? "This month hasn't opened yet - only the current month is actionable."
-    : null;
-  const assignLockTitle = monthDetail?.shuffled
-    ? "This month was already decided by shuffle - the result is final."
+  const assignLockTitle = monthDetail?.isClub
+    ? "Month 2 is always Jolly Friends Club - no drawer assignment needed."
+    : monthDetail?.shuffled
+    ? "This month was already decided by shuffle - use Change Drawer if you need to correct it."
     : drawerAlreadySet
     ? 'A drawer has already been assigned for this month.'
-    : monthLockReason || undefined;
+    : undefined;
   const shuffleLockTitle = monthDetail?.isClub
     ? "Month 2 is always Jolly Friends Club - no shuffle needed."
     : monthDetail?.shuffled
@@ -461,7 +464,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                   ))}
                 </div>
               )}
-              {monthDetail.drawnByMemberId && monthDetail.isCurrentMonth && !monthDetail.isClub && (
+              {monthDetail.drawnByMemberId && !monthDetail.isClub && (
                 <div className="mb-4 rounded-lg border border-gold bg-gold/10 p-3">
                   {!changingDrawer ? (
                     <div className="flex items-center justify-between gap-3 flex-wrap">

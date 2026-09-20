@@ -478,18 +478,8 @@ async function assignDraw(chitId, monthIndex, memberId, actingUserId, replaceExi
     throw ApiError.badRequest("Month 2 is always reserved for Jolly Friends Club - it can't be reassigned.");
   }
   const chit = await getById(chitId);
-  const elapsed = chitMonthsElapsed(chit.start_date, chit.total_months);
-  // Same "only the current month is actionable" rule as shuffle: past
-  // months are already settled and locked, future months haven't opened
-  // yet. Bug fix: this check didn't exist before, so a drawer could be
-  // (re)assigned for any past or future month via direct API calls.
-  if (monthIndex !== elapsed) {
-    throw ApiError.badRequest(
-      monthIndex < elapsed
-        ? 'This month has already passed - drawer assignment is locked.'
-        : 'Drawer assignment only opens once this becomes the current month.'
-    );
-  }
+  // Drawer assignment is intentionally available for every normal month.
+  // Month 2 is the reserved Jolly Friends Club month and remains protected.
   const monthDataByIndex = await ensureMonthData(chit);
   const md = monthDataByIndex.get(monthIndex);
   if (md.shuffled && !replaceExisting) {
