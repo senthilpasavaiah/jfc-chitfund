@@ -79,6 +79,8 @@ export interface ChitMonthParticipant {
   name: string;
   slotNumber?: number;
   paid: boolean;
+  paymentRecorded: boolean;
+  paymentExempt: boolean;
   isDrawer: boolean;
 }
 
