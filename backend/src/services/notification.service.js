@@ -35,7 +35,6 @@ async function listForMember(memberId, { limit = 100, offset = 0 } = {}) {
      FROM notifications n
      LEFT JOIN members m ON m.id = n.member_id
      WHERE (n.type = 'GENERAL' AND n.member_id IS NULL)
-        OR n.type = 'AUCTION_WON'
         OR n.member_id = $1
      ORDER BY n.created_at DESC
      LIMIT $2 OFFSET $3`,

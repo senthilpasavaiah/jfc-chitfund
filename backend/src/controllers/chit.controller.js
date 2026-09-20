@@ -93,7 +93,7 @@ async function recallDraw(req, res) {
 }
 
 async function submitRequest(req, res) {
-  await chitService.submitRequest(req.params.id, Number(req.params.monthIndex), req.user.memberId, req.body.type);
+  await chitService.submitRequest(req.params.id, Number(req.params.monthIndex), req.user.memberId, req.body.type, req.user.id);
   res.json({ success: true });
 }
 

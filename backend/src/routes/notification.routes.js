@@ -13,9 +13,9 @@ router.get('/', async (req, res) => {
   const offset = Number(req.query.offset) || 0;
 
   // Admins/managers can view the complete notification log. Every authenticated
-  // member can view common GENERAL portal announcements, draw-result
-  // notifications, plus any individual notification addressed to that member.
-  // Chit participation is irrelevant.
+  // member can view common GENERAL portal announcements plus notifications
+  // addressed to that member. Chit-specific automatic notifications are stored
+  // once per participant, so only participants receive them.
   const notifications = (req.user.role === 'ADMIN' || req.user.role === 'MANAGER')
     ? await notificationService.list({ limit, offset })
     : req.user.memberId

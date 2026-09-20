@@ -1,10 +1,12 @@
 const app = require('./app');
 const logger = require('./config/logger');
+const notificationScheduler = require('./services/notificationScheduler.service');
 
 const PORT = process.env.PORT || 4000;
 
 const server = app.listen(PORT, () => {
   logger.info(`JFC Chit Fund API listening on port ${PORT} [${process.env.NODE_ENV}]`);
+  notificationScheduler.start();
 });
 
 process.on('unhandledRejection', (err) => {

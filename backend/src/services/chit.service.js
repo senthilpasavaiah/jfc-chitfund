@@ -500,14 +500,17 @@ async function assignDraw(chitId, monthIndex, memberId, actingUserId) {
   if (memberId) {
     const winnerName = await getMemberName(memberId);
     const monthLabel = chitMonthLabel(chit.start_date, monthIndex);
-    await notificationService.dispatch({
-      memberId,
-      channel: 'WHATSAPP',
-      type: 'AUCTION_WON',
-      subject: 'You were assigned this month\'s draw',
-      body: `${winnerName} was assigned as the drawer for ${chit.ref_number} - ${monthLabel}.`,
-      createdById: actingUserId,
-    });
+    const participants = await getParticipants(chitId);
+    for (const participant of participants) {
+      await notificationService.dispatch({
+        memberId: participant.member_id,
+        channel: 'WHATSAPP',
+        type: 'AUCTION_WON',
+        subject: `${chit.ref_number} - ${monthLabel} draw result`,
+        body: `${winnerName} was assigned as the drawer for ${chit.ref_number} - ${monthLabel}.`,
+        createdById: actingUserId,
+      });
+    }
   }
 }
 
@@ -545,30 +548,58 @@ async function recallDraw(chitId, monthIndex, actingUserId) {
   await query(`UPDATE chit_month_data SET drawn_by_member_id = NULL, shuffled = FALSE WHERE id = $1`, [md.id]);
 
   const monthLabel = chitMonthLabel(chit.start_date, monthIndex);
-  // Closes the loop on the earlier "you were assigned" notification so nothing
-  // stale is left implying that assignment is still active.
-  await notificationService.dispatch({
-    memberId: previousMemberId,
-    channel: 'WHATSAPP',
-    type: 'GENERAL',
-    subject: 'Drawer assignment recalled',
-    body: `${previousName}'s drawer assignment for ${chit.ref_number} - ${monthLabel} was recalled. This month is open for reassignment.`,
-    createdById: actingUserId,
-  });
+  // Notify only the members of this chit that the current draw assignment was recalled.
+  const participants = await getParticipants(chitId);
+  for (const participant of participants) {
+    await notificationService.dispatch({
+      memberId: participant.member_id,
+      channel: 'WHATSAPP',
+      type: 'GENERAL',
+      subject: `${chit.ref_number} - drawer assignment recalled`,
+      body: `${previousName}'s drawer assignment for ${chit.ref_number} - ${monthLabel} was recalled. This month is open for reassignment.`,
+      createdById: actingUserId,
+    });
+  }
 
   return { recalledMemberId: previousMemberId };
 }
 
-async function submitRequest(chitId, monthIndex, memberId, type) {
+async function submitRequest(chitId, monthIndex, memberId, type, actingUserId) {
   if (monthIndex === CLUB_SLOT_INDEX) return;
   const chit = await getById(chitId);
   const monthDataByIndex = await ensureMonthData(chit);
   const md = monthDataByIndex.get(monthIndex);
+  const { rows: existingRows } = await query(
+    `SELECT type FROM chit_month_requests WHERE chit_month_data_id = $1 AND member_id = $2`,
+    [md.id, memberId]
+  );
+  const previousType = existingRows[0]?.type || null;
+
   await query(
     `INSERT INTO chit_month_requests (chit_month_data_id, member_id, type) VALUES ($1,$2,$3)
      ON CONFLICT (chit_month_data_id, member_id) DO UPDATE SET type = $3`,
     [md.id, memberId, type]
   );
+
+  // Notify only the participants of this chit when a member raises or changes
+  // a draw request. Do not create duplicate notifications when the same request
+  // type is submitted repeatedly.
+  if (type !== 'none' && type !== previousType) {
+    const requesterName = await getMemberName(memberId);
+    const monthLabel = chitMonthLabel(chit.start_date, monthIndex);
+    const requestLabel = type === 'planning' ? 'planning to take' : 'requested to take';
+    const participants = await getParticipants(chitId);
+    for (const participant of participants) {
+      await notificationService.dispatch({
+        memberId: participant.member_id,
+        channel: 'WHATSAPP',
+        type: 'AUCTION_REMINDER',
+        subject: `${chit.ref_number} - ${monthLabel} draw request`,
+        body: `${requesterName} has ${requestLabel} the ${monthLabel} draw for ${chit.ref_number}.`,
+        createdById: actingUserId,
+      });
+    }
+  }
 }
 
 async function cancelRequest(chitId, monthIndex, memberId) {
@@ -614,14 +645,17 @@ async function performShuffle(chitId, monthIndex, memberIds, actingUserId) {
   const winnerName = await getMemberName(winnerId);
 
   const monthLabel = chitMonthLabel(chit.start_date, monthIndex);
-  await notificationService.dispatch({
-    memberId: winnerId,
-    channel: 'WHATSAPP',
-    type: 'AUCTION_WON',
-    subject: 'You won this month\'s shuffle!',
-    body: `${winnerName} was picked by shuffle for ${chit.ref_number} - ${monthLabel}.`,
-    createdById: actingUserId,
-  });
+  const participants = await getParticipants(chitId);
+  for (const participant of participants) {
+    await notificationService.dispatch({
+      memberId: participant.member_id,
+      channel: 'WHATSAPP',
+      type: 'AUCTION_WON',
+      subject: `${chit.ref_number} - ${monthLabel} draw result`,
+      body: `${winnerName} was picked by shuffle for ${chit.ref_number} - ${monthLabel}.`,
+      createdById: actingUserId,
+    });
+  }
 
   return { winnerId, winnerName };
 }

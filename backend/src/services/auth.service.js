@@ -307,7 +307,7 @@ async function changePassword(userId, currentPassword, newPassword) {
  * services/notification.service.js.
  */
 async function requestPasswordReset(phone) {
-  const { rows } = await query('SELECT id FROM users WHERE phone = $1', [phone]);
+  const { rows } = await query(`SELECT u.id, m.id AS member_id FROM users u LEFT JOIN members m ON m.user_id = u.id WHERE u.phone = $1`, [phone]);
   const user = rows[0];
   // Always behave the same way whether or not the account exists, to avoid
   // leaking which phone numbers are registered.
@@ -322,7 +322,7 @@ async function requestPasswordReset(phone) {
     [user.id, tokenHash, expiresAt]
   );
 
-  return { userId: user.id, rawToken };
+  return { userId: user.id, memberId: user.member_id || null, rawToken };
 }
 
 async function resetPassword(rawToken, newPassword) {

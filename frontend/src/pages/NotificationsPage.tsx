@@ -122,8 +122,8 @@ export default function NotificationsPage() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <p className="text-ink-muted text-sm">
-          Common portal announcements and draw results are visible to every member. Individual notifications are visible only to their selected recipient.
-          External delivery through WhatsApp/SMS/Email is not enabled at this time.
+          Common portal announcements are visible to every member. Payment reminders and chit draw/request notifications are visible only to the relevant member or chit participants.
+          External WhatsApp/SMS/Email delivery is not enabled yet; notifications are currently recorded in the portal.
         </p>
         {canCreate && (
           <button
