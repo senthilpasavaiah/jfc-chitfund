@@ -489,7 +489,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {monthDetail.participants.map((p, participantIndex) => (
                   <div
-                    key={`${p.memberId}-${p.slotNumber ?? participantIndex}`}
+                    key={`${p.memberId}-${participantIndex}`}
                     className={`rounded-lg p-3 flex flex-col items-center gap-1.5 text-center transition-colors ${
                       p.isDrawer
                         ? 'border-2 border-gold bg-gold/10 shadow-sm'
