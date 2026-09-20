@@ -13,6 +13,7 @@ const idParam = [param('id').isUUID()];
 const monthParams = [param('id').isUUID(), param('monthIndex').isInt({ min: 0 })];
 
 router.get('/', chitController.list);
+router.post('/test-fixture', authorize('ADMIN', 'MANAGER'), chitController.createTestFixture);
 router.get('/:id', idParam, validate, requireChitAccess, chitController.getById);
 
 router.post(
@@ -75,7 +76,7 @@ router.post('/:id/months/:monthIndex/pay', monthParams, validate, chitController
 router.patch(
   '/:id/months/:monthIndex/draw',
   authorize('ADMIN', 'MANAGER'),
-  [...monthParams, body('memberId').optional({ nullable: true }).isUUID(), body('replace').optional().isBoolean()],
+  [...monthParams, body('memberId').optional({ nullable: true }).isUUID()],
   validate,
   chitController.assignDraw
 );
@@ -119,7 +120,7 @@ router.post(
 router.get('/:id/months/:monthIndex/payment-proof', monthParams, validate, requireChitAccess, paymentProofController.getForMonth);
 router.post(
   '/:id/months/:monthIndex/payment-manual',
-  authorize('ADMIN', 'MANAGER', 'COLLECTOR'),
+  authorize('ADMIN', 'MANAGER'),
   [...monthParams, body('memberId').isUUID()],
   validate,
   paymentProofController.markManual

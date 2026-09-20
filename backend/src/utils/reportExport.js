@@ -73,22 +73,6 @@ function toCSV(report) {
   lines.push(`Net,${report.association.netProfit}`);
   lines.push('');
 
-  lines.push('Member Payment Collection Summary');
-  lines.push('Metric,Amount');
-  lines.push(`Expected,${report.paymentCollections.expected}`);
-  lines.push(`Collected,${report.paymentCollections.collected}`);
-  lines.push(`Pending,${report.paymentCollections.pending}`);
-  lines.push(`Overdue,${report.paymentCollections.overdue}`);
-  lines.push(`Pending Installments,${report.paymentCollections.pendingCount}`);
-  lines.push('');
-
-  lines.push('Payment Collection by Chit');
-  lines.push('Chit,Expected,Collected,Pending,Overdue');
-  for (const c of report.paymentCollections.byChit) {
-    lines.push(`"${c.chitRef}",${c.expected},${c.collected},${c.pending},${c.overdue}`);
-  }
-  lines.push('');
-
   lines.push('Chit-wise Financial Summary');
   lines.push('Chit,Status,Income,Expenses,Net Result');
   for (const c of report.chitSummary) {
@@ -116,33 +100,8 @@ async function toExcel(report) {
     { metric: 'Total Expenses', value: report.association.expenses.total },
     { metric: '', value: '' },
     { metric: 'Net Profit / Surplus', value: report.association.netProfit },
-    { metric: '', value: '' },
-    { metric: 'Member Payment Collection — Expected', value: report.paymentCollections.expected },
-    { metric: 'Member Payment Collection — Collected', value: report.paymentCollections.collected },
-    { metric: 'Member Payment Collection — Pending', value: report.paymentCollections.pending },
-    { metric: 'Member Payment Collection — Overdue', value: report.paymentCollections.overdue },
-    { metric: 'Member Payment Collection — Pending Installments', value: report.paymentCollections.pendingCount },
   ]);
   summarySheet.getRow(1).font = { bold: true };
-
-  const paymentSheet = workbook.addWorksheet('Payment Collection');
-  paymentSheet.columns = [
-    { header: 'Chit', key: 'chit', width: 22 },
-    { header: 'Expected', key: 'expected', width: 16 },
-    { header: 'Collected', key: 'collected', width: 16 },
-    { header: 'Pending', key: 'pending', width: 16 },
-    { header: 'Overdue', key: 'overdue', width: 16 },
-  ];
-  paymentSheet.addRows(report.paymentCollections.byChit.map((c) => ({ chit: c.chitRef, expected: c.expected, collected: c.collected, pending: c.pending, overdue: c.overdue })));
-  paymentSheet.addRow({});
-  paymentSheet.addRows([
-    { chit: 'Total Expected', expected: report.paymentCollections.expected },
-    { chit: 'Total Collected', collected: report.paymentCollections.collected },
-    { chit: 'Total Pending', pending: report.paymentCollections.pending },
-    { chit: 'Total Overdue', overdue: report.paymentCollections.overdue },
-    { chit: 'Pending Installments', pending: report.paymentCollections.pendingCount },
-  ]);
-  paymentSheet.getRow(1).font = { bold: true };
 
   const chitSheet = workbook.addWorksheet('Chit-wise Summary');
   chitSheet.columns = [
@@ -363,23 +322,6 @@ function toPDF(report) {
     doc.y = barY + barH;
     doc.moveDown(1.1);
 
-    ensureSpace(40);
-    doc.font('Helvetica-Bold').fontSize(12).fillColor(NAVY_HEX).text('Member Payment Collection Summary', PAGE_MARGINS.left, doc.y);
-    doc.moveDown(0.4);
-    drawTable({
-      columns: [
-        { label: 'Metric', width: 0.65, align: 'left' },
-        { label: 'Amount', width: 0.35, align: 'right' },
-      ],
-      rows: [
-        { values: ['Expected', formatINR(report.paymentCollections.expected)] },
-        { values: ['Collected', formatINR(report.paymentCollections.collected)] },
-        { values: ['Pending', formatINR(report.paymentCollections.pending)] },
-        { values: ['Overdue', formatINR(report.paymentCollections.overdue)] },
-        { values: ['Pending Installments', String(report.paymentCollections.pendingCount)] },
-      ],
-    });
-    doc.moveDown(0.7);
     ensureSpace(40);
     doc.font('Helvetica-Bold').fontSize(12).fillColor(NAVY_HEX).text('Chit-wise Financial Summary', PAGE_MARGINS.left, doc.y);
     doc.moveDown(0.4);

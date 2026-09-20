@@ -17,6 +17,13 @@ async function getById(req, res) {
   res.json({ success: true, data: chit });
 }
 
+
+async function createTestFixture(req, res) {
+  const chit = await chitService.createTestFixture();
+  await recordAudit({ userId: req.user.id, action: 'TEST_CHIT_CREATE', entityType: 'Chit', entityId: chit.id, ipAddress: req.ip });
+  res.status(201).json({ success: true, data: chit });
+}
+
 async function deleteChit(req, res) {
   await chitService.deleteChit(req.params.id);
   await recordAudit({ userId: req.user.id, action: 'CHIT_DELETE', entityType: 'Chit', entityId: req.params.id, ipAddress: req.ip });
@@ -81,7 +88,7 @@ async function markAllPaid(req, res) {
 }
 
 async function assignDraw(req, res) {
-  await chitService.assignDraw(req.params.id, Number(req.params.monthIndex), req.body.memberId, req.user.id, req.body.replace === true);
+  await chitService.assignDraw(req.params.id, Number(req.params.monthIndex), req.body.memberId, req.user.id);
   await recordAudit({ userId: req.user.id, action: 'CHIT_DRAW_ASSIGN', entityType: 'Chit', entityId: req.params.id, metadata: { monthIndex: req.params.monthIndex, memberId: req.body.memberId }, ipAddress: req.ip });
   res.json({ success: true });
 }
@@ -93,7 +100,7 @@ async function recallDraw(req, res) {
 }
 
 async function submitRequest(req, res) {
-  await chitService.submitRequest(req.params.id, Number(req.params.monthIndex), req.user.memberId, req.body.type, req.user.id);
+  await chitService.submitRequest(req.params.id, Number(req.params.monthIndex), req.user.memberId, req.body.type);
   res.json({ success: true });
 }
 
@@ -115,7 +122,7 @@ async function getLedger(req, res) {
 
 module.exports = {
   updateRefNumber,
-  create, list, getById, deleteChit, addMembers, removeMember, join, leave,
+  create, createTestFixture, list, getById, deleteChit, addMembers, removeMember, join, leave,
   getMonthDetail, togglePaid, payForMonth, markAllPaid, assignDraw, recallDraw, submitRequest, cancelRequest,
   performShuffle, getLedger,
 };

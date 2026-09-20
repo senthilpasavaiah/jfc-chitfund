@@ -24,14 +24,4 @@ async function pending(req, res) {
   res.json({ success: true, data: installments });
 }
 
-async function overview(req, res) {
-  const data = await paymentService.paymentOverview(req.query);
-  res.json({ success: true, data });
-}
-
-async function options(req, res) {
-  const data = await paymentService.paymentOverview({ status: 'ALL' });
-  res.json({ success: true, data: data.options });
-}
-
-module.exports = { record, listByChit, pending, overview, options };
+module.exports = { record, listByChit, pending };

@@ -97,7 +97,7 @@ const HISTORICAL_CHIT_COUNT = 7;
 
 async function generateChitRef() {
   const year = new Date().getFullYear();
-  const { rows } = await query(`SELECT ref_number FROM chits WHERE ref_number LIKE $1`, [`CHIT-${year}-%`]);
+  const { rows } = await query(`SELECT ref_number FROM chits WHERE ref_number LIKE $1 AND is_test = FALSE`, [`CHIT-${year}-%`]);
   let maxSeq = HISTORICAL_CHIT_COUNT;
   for (const r of rows) {
     const match = r.ref_number.match(/CHIT-\d{4}-(\d+)$/);
@@ -134,6 +134,7 @@ function serializeChit(row) {
     monthsElapsed: chitMonthsElapsed(row.start_date, row.total_months),
     monthsRemaining: row.total_months - chitMonthsElapsed(row.start_date, row.total_months),
     createdAt: row.created_at,
+    isTest: !!row.is_test,
   };
 }
 
@@ -178,8 +179,12 @@ async function isChitParticipant(chitId, memberId) {
  * the list itself (which chits show up) is unchanged for everyone, only the
  * per-card `canAccess` flag differs.
  */
-async function list({ tab }, viewer) {
-  const { rows } = await query(`SELECT * FROM chits ORDER BY created_at DESC`);
+async function list({ tab, test }, viewer) {
+  const wantsTest = String(test || '').toLowerCase() === 'true';
+  if (wantsTest && (!viewer || !['ADMIN', 'MANAGER'].includes(viewer.role))) {
+    throw ApiError.forbidden('Test chits are available only to administrators and managers.');
+  }
+  const { rows } = await query(`SELECT * FROM chits WHERE is_test = $1 ORDER BY created_at DESC`, [wantsTest]);
 
   let participantChitIds = null;
   const isPrivileged = viewer && (viewer.role === 'ADMIN' || viewer.role === 'MANAGER');
@@ -206,6 +211,38 @@ async function getById(chitId) {
   const { rows } = await query(`SELECT * FROM chits WHERE id = $1`, [chitId]);
   if (!rows[0]) throw ApiError.notFound('Chit not found');
   return rows[0];
+}
+
+async function createTestFixture() {
+  const existing = await query(`SELECT * FROM chits WHERE is_test = TRUE AND name = 'JFC WhatsApp Test Chit' ORDER BY created_at DESC LIMIT 1`);
+  if (existing.rows[0]) return getDetail(existing.rows[0].id);
+
+  return withTransaction(async (client) => {
+    const valueLakh = 1;
+    const totalMonths = 10;
+    const refNumber = `TEST-CHIT-${Date.now()}`;
+    const startDate = new Date();
+    const chitResult = await client.query(
+      `INSERT INTO chits (ref_number, name, chit_value, value_lakh, total_months, monthly_installment, rate_schedule, start_date, status, is_test)
+       VALUES ($1,'JFC WhatsApp Test Chit',$2,$3,$4,$5,'jfc',$6,'ACTIVE',TRUE) RETURNING *`,
+      [refNumber, 100000, valueLakh, totalMonths, 10000, startDate]
+    );
+    const chit = chitResult.rows[0];
+
+    for (let i = 1; i <= 9; i++) {
+      const mobile = `900000${String(Date.now() % 10000).padStart(4, '0')}${String(i).padStart(1, '0')}`.slice(-10);
+      const memberResult = await client.query(
+        `INSERT INTO members (name, mobile_number, whatsapp_number, status, is_test, notes)
+         VALUES ($1,$2,$2,'ACTIVE',TRUE,'JFC notification workflow test member') RETURNING id`,
+        [`TEST Member ${String(i).padStart(2, '0')}`, mobile]
+      );
+      await client.query(
+        `INSERT INTO chit_members (chit_id, member_id, slot_number) VALUES ($1,$2,$3)`,
+        [chit.id, memberResult.rows[0].id, i > 1 ? i : 0]
+      );
+    }
+    return chit;
+  }).then((row) => getDetail(row.id));
 }
 
 async function deleteChit(chitId) {
@@ -346,15 +383,10 @@ async function getMonthTimeline(chit) {
     const isClub = i === CLUB_SLOT_INDEX;
 
     const paymentsResult = await query(
-      `SELECT p.member_id, p.paid
-       FROM chit_month_payments p
-       JOIN chit_members cm ON cm.member_id = p.member_id AND cm.chit_id = $2 AND cm.is_active = TRUE
-       WHERE p.chit_month_data_id = $1`,
-      [md.id, chit.id]
+      `SELECT paid FROM chit_month_payments WHERE chit_month_data_id = $1`,
+      [md.id]
     );
-    const paidMemberIds = new Set(paymentsResult.rows.filter((p) => p.paid).map((p) => p.member_id));
-    const participants = await getParticipants(chit.id);
-    const paidCount = participants.reduce((count, participant) => count + (paidMemberIds.has(participant.member_id) ? 1 : 0), 0);
+    const paidCount = paymentsResult.rows.filter((p) => p.paid).length;
 
     timeline.push({
       monthIndex: i,
@@ -372,7 +404,7 @@ async function getMonthTimeline(chit) {
 async function getMonthDetail(chit, monthIndex) {
   const monthDataByIndex = await ensureMonthData(chit);
   const md = monthDataByIndex.get(monthIndex);
-  const participantsList = await getParticipants(chit.id);
+  const slots = await getSlotArray(chit);
   const isClub = monthIndex === CLUB_SLOT_INDEX;
 
   const paymentsResult = await query(
@@ -387,15 +419,13 @@ async function getMonthDetail(chit, monthIndex) {
     [md.id]
   );
 
-  // Build the payment/draw list directly from active chit_members rather than
-  // reconstructing it from the fixed slot array. This prevents valid participant
-  // rows from disappearing when legacy/duplicate slot data is present.
-  const participants = participantsList.map((p) => ({
-    memberId: p.member_id,
-    name: p.name,
-    slotNumber: p.slot_number,
-    paid: !!paidByMember.get(p.member_id),
-    isDrawer: md.drawn_by_member_id === p.member_id,
+  const participantSlots = slots.filter((s, idx) => s && !s.isClub && idx !== CLUB_SLOT_INDEX);
+
+  const participants = participantSlots.map((s) => ({
+    memberId: s.memberId,
+    name: s.name,
+    paid: !!paidByMember.get(s.memberId),
+    isDrawer: md.drawn_by_member_id === s.memberId,
   }));
 
   return {
@@ -473,41 +503,48 @@ async function markAllPaidForMonth(chitId, monthIndex) {
   return { monthIndex, markedCount: participants.length };
 }
 
-async function assignDraw(chitId, monthIndex, memberId, actingUserId, replaceExisting = false) {
+async function assignDraw(chitId, monthIndex, memberId, actingUserId) {
   if (monthIndex === CLUB_SLOT_INDEX) {
     throw ApiError.badRequest("Month 2 is always reserved for Jolly Friends Club - it can't be reassigned.");
   }
   const chit = await getById(chitId);
-  // Drawer assignment is intentionally available for every normal month.
-  // Month 2 is the reserved Jolly Friends Club month and remains protected.
+  const elapsed = chitMonthsElapsed(chit.start_date, chit.total_months);
+  // Same "only the current month is actionable" rule as shuffle: past
+  // months are already settled and locked, future months haven't opened
+  // yet. Bug fix: this check didn't exist before, so a drawer could be
+  // (re)assigned for any past or future month via direct API calls.
+  if (monthIndex !== elapsed) {
+    throw ApiError.badRequest(
+      monthIndex < elapsed
+        ? 'This month has already passed - drawer assignment is locked.'
+        : 'Drawer assignment only opens once this becomes the current month.'
+    );
+  }
   const monthDataByIndex = await ensureMonthData(chit);
   const md = monthDataByIndex.get(monthIndex);
-  if (md.shuffled && !replaceExisting) {
-    throw ApiError.badRequest("This month was already decided by shuffle - use Change Drawer if you need to correct it.");
+  if (md.shuffled) {
+    throw ApiError.badRequest("This month was already decided by shuffle - the result is final and can't be changed.");
   }
-  if (md.drawn_by_member_id && !replaceExisting) {
-    throw ApiError.badRequest('A drawer has already been assigned for this month. Use Change Drawer to replace it.');
+  // Bug fix: previously only `shuffled` was checked here, so a month that
+  // already had a manually-assigned drawer could silently be reassigned to
+  // someone else. Once a drawer exists for a month (by any method), Assign
+  // is locked for that month.
+  if (md.drawn_by_member_id) {
+    throw ApiError.badRequest('A drawer has already been assigned for this month.');
   }
-  const participants = await getParticipants(chitId);
-  if (!participants.some((p) => p.member_id === memberId)) {
-    throw ApiError.badRequest('The selected drawer must be an active participant of this chit.');
-  }
-  const previousMemberId = md.drawn_by_member_id;
-  await query(`UPDATE chit_month_data SET drawn_by_member_id = $1, shuffled = FALSE WHERE id = $2`, [memberId || null, md.id]);
+  await query(`UPDATE chit_month_data SET drawn_by_member_id = $1 WHERE id = $2`, [memberId || null, md.id]);
 
   if (memberId) {
     const winnerName = await getMemberName(memberId);
     const monthLabel = chitMonthLabel(chit.start_date, monthIndex);
-    for (const participant of participants) {
-      await notificationService.dispatch({
-        memberId: participant.member_id,
-        channel: 'WHATSAPP',
-        type: 'AUCTION_WON',
-        subject: `${chit.ref_number} - ${monthLabel} draw result`,
-        body: `${winnerName} was assigned as the drawer for ${chit.ref_number} - ${monthLabel}.`,
-        createdById: actingUserId,
-      });
-    }
+    await notificationService.dispatch({
+      memberId,
+      channel: 'WHATSAPP',
+      type: 'AUCTION_WON',
+      subject: 'You were assigned this month\'s draw',
+      body: `${winnerName} was assigned as the drawer for ${chit.ref_number} - ${monthLabel}.`,
+      createdById: actingUserId,
+    });
   }
 }
 
@@ -545,58 +582,30 @@ async function recallDraw(chitId, monthIndex, actingUserId) {
   await query(`UPDATE chit_month_data SET drawn_by_member_id = NULL, shuffled = FALSE WHERE id = $1`, [md.id]);
 
   const monthLabel = chitMonthLabel(chit.start_date, monthIndex);
-  // Notify only the members of this chit that the current draw assignment was recalled.
-  const participants = await getParticipants(chitId);
-  for (const participant of participants) {
-    await notificationService.dispatch({
-      memberId: participant.member_id,
-      channel: 'WHATSAPP',
-      type: 'GENERAL',
-      subject: `${chit.ref_number} - drawer assignment recalled`,
-      body: `${previousName}'s drawer assignment for ${chit.ref_number} - ${monthLabel} was recalled. This month is open for reassignment.`,
-      createdById: actingUserId,
-    });
-  }
+  // Closes the loop on the earlier "you were assigned" notification so nothing
+  // stale is left implying that assignment is still active.
+  await notificationService.dispatch({
+    memberId: previousMemberId,
+    channel: 'WHATSAPP',
+    type: 'GENERAL',
+    subject: 'Drawer assignment recalled',
+    body: `${previousName}'s drawer assignment for ${chit.ref_number} - ${monthLabel} was recalled. This month is open for reassignment.`,
+    createdById: actingUserId,
+  });
 
   return { recalledMemberId: previousMemberId };
 }
 
-async function submitRequest(chitId, monthIndex, memberId, type, actingUserId) {
+async function submitRequest(chitId, monthIndex, memberId, type) {
   if (monthIndex === CLUB_SLOT_INDEX) return;
   const chit = await getById(chitId);
   const monthDataByIndex = await ensureMonthData(chit);
   const md = monthDataByIndex.get(monthIndex);
-  const { rows: existingRows } = await query(
-    `SELECT type FROM chit_month_requests WHERE chit_month_data_id = $1 AND member_id = $2`,
-    [md.id, memberId]
-  );
-  const previousType = existingRows[0]?.type || null;
-
   await query(
     `INSERT INTO chit_month_requests (chit_month_data_id, member_id, type) VALUES ($1,$2,$3)
      ON CONFLICT (chit_month_data_id, member_id) DO UPDATE SET type = $3`,
     [md.id, memberId, type]
   );
-
-  // Notify only the participants of this chit when a member raises or changes
-  // a draw request. Do not create duplicate notifications when the same request
-  // type is submitted repeatedly.
-  if (type !== 'none' && type !== previousType) {
-    const requesterName = await getMemberName(memberId);
-    const monthLabel = chitMonthLabel(chit.start_date, monthIndex);
-    const requestLabel = type === 'planning' ? 'planning to take' : 'requested to take';
-    const participants = await getParticipants(chitId);
-    for (const participant of participants) {
-      await notificationService.dispatch({
-        memberId: participant.member_id,
-        channel: 'WHATSAPP',
-        type: 'AUCTION_REMINDER',
-        subject: `${chit.ref_number} - ${monthLabel} draw request`,
-        body: `${requesterName} has ${requestLabel} the ${monthLabel} draw for ${chit.ref_number}.`,
-        createdById: actingUserId,
-      });
-    }
-  }
 }
 
 async function cancelRequest(chitId, monthIndex, memberId) {
@@ -642,17 +651,14 @@ async function performShuffle(chitId, monthIndex, memberIds, actingUserId) {
   const winnerName = await getMemberName(winnerId);
 
   const monthLabel = chitMonthLabel(chit.start_date, monthIndex);
-  const participants = await getParticipants(chitId);
-  for (const participant of participants) {
-    await notificationService.dispatch({
-      memberId: participant.member_id,
-      channel: 'WHATSAPP',
-      type: 'AUCTION_WON',
-      subject: `${chit.ref_number} - ${monthLabel} draw result`,
-      body: `${winnerName} was picked by shuffle for ${chit.ref_number} - ${monthLabel}.`,
-      createdById: actingUserId,
-    });
-  }
+  await notificationService.dispatch({
+    memberId: winnerId,
+    channel: 'WHATSAPP',
+    type: 'AUCTION_WON',
+    subject: 'You won this month\'s shuffle!',
+    body: `${winnerName} was picked by shuffle for ${chit.ref_number} - ${monthLabel}.`,
+    createdById: actingUserId,
+  });
 
   return { winnerId, winnerName };
 }
@@ -664,7 +670,7 @@ async function performShuffle(chitId, monthIndex, memberIds, actingUserId) {
  * gone stale relative to the actual assignment.
  */
 async function getCurrentMonthDrawers() {
-  const { rows: chits } = await query(`SELECT * FROM chits WHERE start_date IS NOT NULL`);
+  const { rows: chits } = await query(`SELECT * FROM chits WHERE start_date IS NOT NULL AND is_test = FALSE`);
   const results = [];
   for (const chit of chits) {
     if (getChitStatus(chit.start_date, chit.total_months) !== 'ongoing') continue;
@@ -853,7 +859,7 @@ async function getConfirmedChitCollections({ from, to } = {}) {
      JOIN chit_month_data cmd ON cmd.id = cmp.chit_month_data_id
      JOIN chits c ON c.id = cmd.chit_id
      JOIN members m ON m.id = cmp.member_id
-     WHERE cmp.paid = TRUE`
+     WHERE c.is_test = FALSE AND cmp.paid = TRUE`
   );
 
   const rangeStart = from ? new Date(from) : null;
@@ -930,4 +936,5 @@ module.exports = {
   getLiveChitFinancials,
   chitCapacity,
   getChitStatus,
+  createTestFixture,
 };

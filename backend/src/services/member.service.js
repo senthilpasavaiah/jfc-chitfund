@@ -75,7 +75,7 @@ async function create(input) {
 }
 
 async function list({ status, search, page = 1, pageSize = 20 } = {}, viewer) {
-  const conditions = [];
+  const conditions = ['is_test = FALSE'];
   const params = [];
 
   if (status) {

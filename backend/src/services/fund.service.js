@@ -18,7 +18,7 @@ const NEW_MANAGEMENT_START_DATE = '2026-07-01';
 async function syncAllChitLedgers() {
   const chitService = require('./chit.service');
   const logger = require('../config/logger');
-  const { rows } = await query(`SELECT id, ref_number FROM chits`);
+  const { rows } = await query(`SELECT id, ref_number FROM chits WHERE is_test = FALSE`);
   for (const { id, ref_number } of rows) {
     try {
       await chitService.syncAccounting(id);
@@ -141,7 +141,7 @@ async function summary() {
   // no category filter) is what keeps the two from disagreeing - and
   // stays correct automatically if a category is ever renamed or added.
   const liveChitIncome = await query(
-    `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger WHERE type = 'income'`
+    `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger cal JOIN chits c ON c.id = cal.chit_id WHERE c.is_test = FALSE AND cal.type = 'income'`
   );
   // Bug fix: the Dashboard's "Expenses" card and the Fund page's own
   // Expenses/Chit Profit totals used to be computed independently (in
@@ -154,7 +154,7 @@ async function summary() {
   // consume this same value, is what makes Dashboard and Fund agree.
   const officeExpenses = await query(`SELECT COALESCE(SUM(amount),0)::float AS total FROM expenses`);
   const chitExpenses = await query(
-    `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger WHERE type = 'expense'`
+    `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger cal JOIN chits c ON c.id = cal.chit_id WHERE c.is_test = FALSE AND cal.type = 'expense'`
   );
   const settlementTotals = await query(
     `SELECT COALESCE(SUM(principal),0)::float AS principal, COALESCE(SUM(profit_6pct),0)::float AS profit
@@ -202,58 +202,6 @@ async function summary() {
  * to NEW_MANAGEMENT_START_DATE onward - so a rupee here is never also
  * counted in Previous Management, and vice versa.
  */
-/**
- * Month-by-month New Management fund trajectory. This is Association fund
- * movement (opening handover + donations + Santha + live chit income -
- * expenses), not "profit" and not member collections.
- */
-async function growthSeries() {
-  await syncAllChitLedgers();
-  const start = NEW_MANAGEMENT_START_DATE;
-  const [donations, santha, chitIncome, officeExpenses, chitExpenses, handover] = await Promise.all([
-    query(`SELECT date_trunc('month', donated_at)::date AS month, COALESCE(SUM(amount),0)::float AS amount
-           FROM donations WHERE donated_at >= $1 GROUP BY 1 ORDER BY 1`, [start]),
-    query(`SELECT date_trunc('month', entry_date)::date AS month, COALESCE(SUM(amount),0)::float AS amount
-           FROM santha_entries WHERE entry_date >= $1 GROUP BY 1 ORDER BY 1`, [start]),
-    query(`SELECT date_trunc('month', entry_date)::date AS month, COALESCE(SUM(amount),0)::float AS amount
-           FROM chit_auto_ledger WHERE type = 'income' AND entry_date >= $1 GROUP BY 1 ORDER BY 1`, [start]),
-    query(`SELECT date_trunc('month', spent_at)::date AS month, COALESCE(SUM(amount),0)::float AS amount
-           FROM expenses WHERE spent_at >= $1 GROUP BY 1 ORDER BY 1`, [start]),
-    query(`SELECT date_trunc('month', entry_date)::date AS month, COALESCE(SUM(amount),0)::float AS amount
-           FROM chit_auto_ledger WHERE type = 'expense' AND entry_date >= $1 GROUP BY 1 ORDER BY 1`, [start]),
-    query(`SELECT amount FROM management_handover ORDER BY handover_date ASC LIMIT 1`),
-  ]);
-
-  const buckets = new Map();
-  const add = (rows, key) => rows.forEach((r) => {
-    const month = new Date(r.month).toISOString().slice(0, 7);
-    const b = buckets.get(month) || { month, income: 0, expenses: 0 };
-    if (key === 'income') b.income += Number(r.amount);
-    else b.expenses += Number(r.amount);
-    buckets.set(month, b);
-  });
-  add(donations.rows, 'income');
-  add(santha.rows, 'income');
-  add(chitIncome.rows, 'income');
-  add(officeExpenses.rows, 'expense');
-  add(chitExpenses.rows, 'expense');
-
-  const now = new Date();
-  const cursor = new Date(2026, 6, 1);
-  const end = new Date(now.getFullYear(), now.getMonth(), 1);
-  const opening = Number(handover.rows[0]?.amount || 0);
-  const series = [];
-  let balance = opening;
-  while (cursor <= end) {
-    const month = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
-    const b = buckets.get(month) || { month, income: 0, expenses: 0 };
-    balance += b.income - b.expenses;
-    series.push({ month, income: Number(b.income.toFixed(2)), expenses: Number(b.expenses.toFixed(2)), balance: Number(balance.toFixed(2)) });
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-  return { openingBalance: opening, series };
-}
-
 async function getManagementSplit() {
   await syncAllChitLedgers();
 
@@ -288,7 +236,7 @@ async function getManagementSplit() {
     [NEW_MANAGEMENT_START_DATE]
   );
   const newChitIncome = await query(
-    `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger WHERE type = 'income' AND entry_date >= $1`,
+    `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger cal JOIN chits c ON c.id = cal.chit_id WHERE c.is_test = FALSE AND cal.type = 'income' AND entry_date >= $1`,
     [NEW_MANAGEMENT_START_DATE]
   );
   const newExpensesOffice = await query(
@@ -296,7 +244,7 @@ async function getManagementSplit() {
     [NEW_MANAGEMENT_START_DATE]
   );
   const newExpensesChit = await query(
-    `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger WHERE type = 'expense' AND entry_date >= $1`,
+    `SELECT COALESCE(SUM(amount),0)::float AS total FROM chit_auto_ledger cal JOIN chits c ON c.id = cal.chit_id WHERE c.is_test = FALSE AND cal.type = 'expense' AND entry_date >= $1`,
     [NEW_MANAGEMENT_START_DATE]
   );
 
@@ -358,6 +306,5 @@ module.exports = {
   addSettlementYear,
   summary,
   getManagementSplit,
-  growthSeries,
   listLiveChitFinancials,
 };

@@ -3,13 +3,12 @@ const { query } = require('../config/db');
 const { authenticate } = require('../middleware/auth');
 const fundService = require('../services/fund.service');
 const chitService = require('../services/chit.service');
-const paymentService = require('../services/payment.service');
 
 const router = express.Router();
 router.use(authenticate);
 
 router.get('/summary', async (req, res) => {
-  const [members, classicPaymentsThisMonth, expensesThisMonth, pendingSummary, growth] = await Promise.all([
+  const [members, classicPaymentsThisMonth, pending, expensesThisMonth] = await Promise.all([
     query(`SELECT
              COUNT(*) FILTER (WHERE status = 'ACTIVE')::int AS active,
              COUNT(*)::int AS total
@@ -17,11 +16,12 @@ router.get('/summary', async (req, res) => {
     query(`SELECT COALESCE(SUM(amount), 0)::float AS total
            FROM payments
            WHERE date_trunc('month', paid_at) = date_trunc('month', now())`),
+    query(`SELECT COALESCE(SUM(base_amount + fine_amount - dividend_adjustment), 0)::float AS total,
+                  COUNT(*)::int AS count
+           FROM installments WHERE status IN ('PENDING','LATE')`),
     query(`SELECT COALESCE(SUM(amount), 0)::float AS total
            FROM expenses
            WHERE date_trunc('month', spent_at) = date_trunc('month', now())`),
-    paymentService.currentPendingSummary(),
-    fundService.growthSeries(),
   ]);
 
   // Chit status is computed from dates (upcoming/ongoing/completed), not a
@@ -67,7 +67,7 @@ router.get('/summary', async (req, res) => {
       closedChits,
       monthlyCollection,
       monthlyExpenses: expensesThisMonth.rows[0].total,
-      pendingPayments: pendingSummary,
+      pendingPayments: { total: pending.rows[0].total, count: pending.rows[0].count },
       totalCollection,
       totalExpenses: fundsSummary.totalExpenses,
       profit: totalCollection - fundsSummary.totalExpenses,
@@ -79,7 +79,6 @@ router.get('/summary', async (req, res) => {
       accruedProfit: fundsSummary.accruedProfit,
       finalSettlementValue: fundsSummary.finalSettlementValue,
       currentMonthDrawers,
-      fundGrowth: growth,
     },
   });
 });

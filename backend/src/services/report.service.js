@@ -1,7 +1,6 @@
 const chitService = require('./chit.service');
 const fundService = require('./fund.service');
 const expenseService = require('./expense.service');
-const paymentService = require('./payment.service');
 
 const PERIOD_MONTHS = {
   monthly: 1,
@@ -67,11 +66,6 @@ function round2(n) {
 async function buildReport({ period, from, to }) {
   const range = resolveRange({ period, from, to });
   const isAllTime = !range.from || !range.to;
-
-  const paymentCollections = await paymentService.collectionSummary({
-    from: range.from ? range.from.toISOString().slice(0, 10) : null,
-    to: (range.to || new Date()).toISOString().slice(0, 10),
-  });
 
   // --- Live chits: reuse each chit's own auto-booked ledger (chit.service),
   // the same data source as its "Income & Expenses" panel. A chit that
@@ -165,16 +159,6 @@ async function buildReport({ period, from, to }) {
     // dates below, is what lets reportExport.js show an accurate label.
     period: period || (isAllTime ? 'historical' : 'custom'),
     range: { from: range.from, to: range.to },
-
-    paymentCollections: {
-      expected: round2(paymentCollections.expected),
-      collected: round2(paymentCollections.collected),
-      pending: round2(paymentCollections.pending),
-      overdue: round2(paymentCollections.overdue),
-      pendingCount: paymentCollections.pendingCount,
-      paidCount: paymentCollections.paidCount,
-      byChit: paymentCollections.byChit.map((row) => ({ ...row, expected: round2(row.expected), collected: round2(row.collected), pending: round2(row.pending), overdue: round2(row.overdue) })),
-    },
 
     association: {
       income: {
