@@ -359,7 +359,9 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     ? 'Already used for this month - the result is final.'
     : drawerAlreadySet
     ? 'A drawer has already been assigned for this month.'
-    : monthLockReason || undefined;
+    : !monthDetail?.isCurrentMonth
+    ? 'Shuffle is available only for the current month.'
+    : undefined;
 
   return (
     <div className="space-y-5">
@@ -387,11 +389,6 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
-      {isAdmin && monthDetail && monthLockReason && (
-        <p className="text-xs text-ink-muted bg-paper border border-line rounded-lg px-3 py-2">
-          🔒 {monthLockReason} Assign and Shuffle are only available for the current month.
-        </p>
-      )}
 
       {isAdmin && monthDetail && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
