@@ -362,6 +362,12 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     : !monthDetail?.isCurrentMonth
     ? 'Shuffle is available only for the current month.'
     : undefined;
+  // A member can occupy more than one slot in the same chit. Drawer selection
+  // is member-based, not slot-based, so the same member must appear only once
+  // in drawer-selection controls even when their name appears on multiple cards.
+  const uniqueDrawerParticipants = monthDetail
+    ? Array.from(new Map(monthDetail.participants.map((p) => [p.memberId, p])).values())
+    : [];
 
   return (
     <div className="space-y-5">
@@ -472,7 +478,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                     <div className="flex items-center gap-2 flex-wrap">
                       <select value={changeDrawerId} onChange={(e) => setChangeDrawerId(e.target.value)} className="h-9 rounded-md border border-line bg-white px-2 text-sm min-w-56">
                         <option value="">Select new drawer</option>
-                        {monthDetail.participants.filter((p) => p.memberId !== monthDetail.drawnByMemberId).map((p) => <option key={p.memberId} value={p.memberId}>{p.name}</option>)}
+                        {uniqueDrawerParticipants.filter((p) => p.memberId !== monthDetail.drawnByMemberId).map((p) => <option key={p.memberId} value={p.memberId}>{p.name}</option>)}
                       </select>
                       <button onClick={handleChangeDrawer} disabled={!changeDrawerId || changingDrawerSaving} className="h-9 bg-success text-white px-3 rounded-md text-xs font-medium disabled:opacity-40 cursor-pointer">{changingDrawerSaving ? 'Saving…' : 'Confirm Change'}</button>
                       <button onClick={() => { setChangingDrawer(false); setChangeDrawerId(''); }} className="h-9 border border-line bg-white px-3 rounded-md text-xs cursor-pointer">Cancel</button>
@@ -481,9 +487,9 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                 </div>
               )}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {monthDetail.participants.map((p) => (
+                {monthDetail.participants.map((p, participantIndex) => (
                   <div
-                    key={p.memberId}
+                    key={`${p.memberId}-${p.slotNumber ?? participantIndex}`}
                     className={`rounded-lg p-3 flex flex-col items-center gap-1.5 text-center transition-colors ${
                       p.isDrawer
                         ? 'border-2 border-gold bg-gold/10 shadow-sm'
@@ -522,7 +528,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                       </div>
                     )}
 
-                    {!monthDetail.isClub && !p.isDrawer && (
+                    {!monthDetail.isClub && !p.isDrawer && monthDetail.participants.findIndex((participant) => participant.memberId === p.memberId) === participantIndex && (
                       <button
                         onClick={() => handleAssignDraw(p.memberId)}
                         disabled={assignLocked}
