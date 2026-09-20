@@ -81,22 +81,9 @@ async function markAllPaid(req, res) {
 }
 
 async function assignDraw(req, res) {
-  await chitService.assignDraw(req.params.id, Number(req.params.monthIndex), req.body.memberId, req.user.id);
+  await chitService.assignDraw(req.params.id, Number(req.params.monthIndex), req.body.memberId, req.user.id, req.body.replace === true);
   await recordAudit({ userId: req.user.id, action: 'CHIT_DRAW_ASSIGN', entityType: 'Chit', entityId: req.params.id, metadata: { monthIndex: req.params.monthIndex, memberId: req.body.memberId }, ipAddress: req.ip });
   res.json({ success: true });
-}
-
-async function changeDraw(req, res) {
-  const result = await chitService.changeDraw(req.params.id, Number(req.params.monthIndex), req.body.memberId, req.user.id);
-  await recordAudit({
-    userId: req.user.id,
-    action: 'CHIT_DRAW_CHANGE',
-    entityType: 'Chit',
-    entityId: req.params.id,
-    metadata: { monthIndex: req.params.monthIndex, previousMemberId: result.previousMemberId, newMemberId: result.newMemberId },
-    ipAddress: req.ip,
-  });
-  res.json({ success: true, data: result });
 }
 
 async function recallDraw(req, res) {
@@ -129,6 +116,6 @@ async function getLedger(req, res) {
 module.exports = {
   updateRefNumber,
   create, list, getById, deleteChit, addMembers, removeMember, join, leave,
-  getMonthDetail, togglePaid, payForMonth, markAllPaid, assignDraw, changeDraw, recallDraw, submitRequest, cancelRequest,
+  getMonthDetail, togglePaid, payForMonth, markAllPaid, assignDraw, recallDraw, submitRequest, cancelRequest,
   performShuffle, getLedger,
 };

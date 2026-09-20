@@ -75,16 +75,9 @@ router.post('/:id/months/:monthIndex/pay', monthParams, validate, chitController
 router.patch(
   '/:id/months/:monthIndex/draw',
   authorize('ADMIN', 'MANAGER'),
-  [...monthParams, body('memberId').optional({ nullable: true }).isUUID()],
+  [...monthParams, body('memberId').optional({ nullable: true }).isUUID(), body('replace').optional().isBoolean()],
   validate,
   chitController.assignDraw
-);
-router.patch(
-  '/:id/months/:monthIndex/draw/change',
-  authorize('ADMIN', 'MANAGER'),
-  [...monthParams, body('memberId').isUUID().withMessage('Valid new drawer memberId is required')],
-  validate,
-  chitController.changeDraw
 );
 router.delete(
   '/:id/months/:monthIndex/draw',

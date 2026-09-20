@@ -44,9 +44,10 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   const [accessDenied, setAccessDenied] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
   const [recalling, setRecalling] = useState(false);
-  const [changingDrawerTo, setChangingDrawerTo] = useState('');
-  const [changingDrawer, setChangingDrawer] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [changingDrawer, setChangingDrawer] = useState(false);
+  const [changeDrawerId, setChangeDrawerId] = useState('');
+  const [changingDrawerSaving, setChangingDrawerSaving] = useState(false);
 
   // Tracks whether we've already auto-picked "the current month" for THIS
   // chit id. Previously the auto-pick logic ran on every loadChit() call
@@ -98,7 +99,6 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   }, [id]);
 
   useEffect(() => {
-    setChangingDrawerTo('');
     if (chit) loadMonth(selectedMonth);
     setPanel('none');
     setSuccessMessage(null);
@@ -123,8 +123,8 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
       return;
     }
     setPanel(p);
-    if (p === 'ledger' && isAdmin) loadLedger();
-    if (p === 'participants' && isAdmin) loadPendingProofs();
+    if (p === 'ledger') loadLedger();
+    if (p === 'participants') loadPendingProofs();
   }
 
   async function handleTogglePaid(memberId: string, currentlyPaid: boolean) {
@@ -209,10 +209,10 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     }
   }
 
-  async function handleAssignDraw(memberId: string) {
+  async function handleAssignDraw(memberId: string, replace = false) {
     setError(null);
     try {
-      await client.patch(`/chits/${id}/months/${selectedMonth}/draw`, { memberId });
+      await client.patch(`/chits/${id}/months/${selectedMonth}/draw`, { memberId, replace });
       loadMonth(selectedMonth);
       loadChit();
     } catch (err: any) {
@@ -220,22 +220,21 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     }
   }
 
+
   async function handleChangeDrawer() {
-    if (!monthDetail?.drawnByMemberId || !changingDrawerTo || changingDrawer) return;
-    const newMember = monthDetail.participants.find((p) => p.memberId === changingDrawerTo);
-    if (!newMember) return;
-    if (!window.confirm(`Change the drawer for ${monthDetail.label} from ${monthDetail.drawnByName} to ${newMember.name}?`)) return;
+    if (!changeDrawerId || changingDrawerSaving) return;
     setError(null);
-    setChangingDrawer(true);
+    setChangingDrawerSaving(true);
     try {
-      await client.patch(`/chits/${id}/months/${selectedMonth}/draw/change`, { memberId: changingDrawerTo });
-      setChangingDrawerTo('');
+      await handleAssignDraw(changeDrawerId, true);
+      setChangingDrawer(false);
+      setChangeDrawerId('');
       await Promise.all([loadMonth(selectedMonth), loadChit()]);
-      setSuccessMessage(`Drawer changed to ${newMember.name}.`);
+      setSuccessMessage('Drawer changed successfully.');
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Could not change the drawer.');
     } finally {
-      setChangingDrawer(false);
+      setChangingDrawerSaving(false);
     }
   }
 
@@ -407,12 +406,11 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
         </p>
       )}
 
-      {monthDetail && (
-        <div className={`grid gap-2 ${isAdmin ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1'}`}>
+      {isAdmin && monthDetail && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <button onClick={() => togglePanel('participants')} className="h-10 rounded-lg border border-line bg-white px-3 text-sm font-medium cursor-pointer hover:border-navy-light truncate">
             {panel === 'participants' ? 'Hide Participants' : 'View Participants'}
           </button>
-          {isAdmin && <>
           {/* Shuffle stays visible even after use (or when locked) - just fades to show it's not usable, rather than disappearing and shifting the layout. */}
           <button
             onClick={handleShuffle}
@@ -434,7 +432,6 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
           >
             {deleting ? 'Deleting…' : '🗑 Delete this chit'}
           </button>
-          </>}
         </div>
       )}
 
@@ -446,31 +443,26 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
 
       <div
         className="grid transition-all duration-300 ease-out"
-        style={{ gridTemplateRows: panel === 'participants' && monthDetail ? '1fr' : '0fr' }}
+        style={{ gridTemplateRows: isAdmin && panel === 'participants' && monthDetail ? '1fr' : '0fr' }}
       >
         <div className="overflow-hidden min-h-0">
-          {monthDetail && (
+          {isAdmin && monthDetail && (
             <div className="ledger-card p-5 mt-0">
               <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-ink-muted">Participants</div>
-                  <p className="text-xs text-ink-muted mt-1">Only members participating in {chit?.refNumber || 'this chit'} are shown.</p>
-                </div>
-                {isAdmin && (
-                  <button
-                    onClick={handleMarkAllPaid}
-                    disabled={markingAll || monthDetail.participants.length === 0 || monthDetail.participants.every((p) => p.paid)}
-                    title="Marks every participant Paid for this month only. Jolly Friends Club is excluded — it never has a payment row."
-                    className="text-xs font-medium bg-success text-white px-3 py-1.5 rounded-md cursor-pointer hover:bg-success/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {markingAll ? 'Marking…' : '✓ Select All Paid'}
-                  </button>
-                )}
+                <div className="text-xs uppercase tracking-wide text-ink-muted">Participants — Payment &amp; Draw Assignment</div>
+                <button
+                  onClick={handleMarkAllPaid}
+                  disabled={markingAll || monthDetail.participants.length === 0 || monthDetail.participants.every((p) => p.paid)}
+                  title="Marks every participant Paid for this month only. Jolly Friends Club is excluded — it never has a payment row."
+                  className="text-xs font-medium bg-success text-white px-3 py-1.5 rounded-md cursor-pointer hover:bg-success/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {markingAll ? 'Marking…' : '✓ Select All Paid'}
+                </button>
               </div>
               {successMessage && (
                 <div className="mb-3 text-xs font-medium text-success bg-success/10 px-3 py-2 rounded-md">{successMessage}</div>
               )}
-              {isAdmin && pendingProofs.length > 0 && (
+              {pendingProofs.length > 0 && (
                 <div className="mb-4 p-3 bg-gold/10 border border-gold rounded-lg">
                   <div className="text-xs font-bold mb-2">Pending payment proofs</div>
                   {pendingProofs.map((p) => (
@@ -485,10 +477,29 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                   ))}
                 </div>
               )}
+              {monthDetail.drawnByMemberId && monthDetail.isCurrentMonth && !monthDetail.isClub && (
+                <div className="mb-4 rounded-lg border border-gold bg-gold/10 p-3">
+                  {!changingDrawer ? (
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div className="text-sm"><span className="font-semibold">Current drawer:</span> {monthDetail.drawnByName}</div>
+                      <button onClick={() => { setChangingDrawer(true); setChangeDrawerId(''); }} className="text-xs bg-navy text-white px-3 py-1.5 rounded-md font-medium cursor-pointer">Change Drawer</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select value={changeDrawerId} onChange={(e) => setChangeDrawerId(e.target.value)} className="h-9 rounded-md border border-line bg-white px-2 text-sm min-w-56">
+                        <option value="">Select new drawer</option>
+                        {monthDetail.participants.filter((p) => p.memberId !== monthDetail.drawnByMemberId).map((p) => <option key={p.memberId + '-' + p.slotNumber} value={p.memberId}>{p.name}</option>)}
+                      </select>
+                      <button onClick={handleChangeDrawer} disabled={!changeDrawerId || changingDrawerSaving} className="h-9 bg-success text-white px-3 rounded-md text-xs font-medium disabled:opacity-40 cursor-pointer">{changingDrawerSaving ? 'Saving…' : 'Confirm Change'}</button>
+                      <button onClick={() => { setChangingDrawer(false); setChangeDrawerId(''); }} className="h-9 border border-line bg-white px-3 rounded-md text-xs cursor-pointer">Cancel</button>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {monthDetail.participants.map((p) => (
                   <div
-                    key={p.memberId}
+                    key={`${p.memberId}-${p.slotNumber ?? ""}`}
                     className={`rounded-lg p-3 flex flex-col items-center gap-1.5 text-center transition-colors ${
                       p.isDrawer
                         ? 'border-2 border-gold bg-gold/10 shadow-sm'
@@ -504,7 +515,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                       {initials(p.name)}
                     </div>
                     <div className={`text-sm ${p.isDrawer ? 'font-bold text-gold-dim' : 'font-medium'}`}>{p.name}</div>
-                    {isAdmin && <label className="flex items-center gap-1.5 text-xs text-ink-muted">
+                    <label className="flex items-center gap-1.5 text-xs text-ink-muted">
                       <span>Paid</span>
                       <button
                         role="switch" aria-checked={p.paid}
@@ -513,9 +524,9 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                       >
                         <span className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform" style={{ transform: p.paid ? 'translateX(16px)' : 'translateX(0)' }} />
                       </button>
-                    </label>}
+                    </label>
 
-                    {isAdmin && markingMemberId === p.memberId && !p.paid && (
+                    {markingMemberId === p.memberId && !p.paid && (
                       <div className="w-full bg-paper rounded-md p-2 space-y-1.5">
                         <p className="text-[10px] text-ink-muted">Proof needed to mark paid:</p>
                         <label className="block text-xs bg-navy text-white rounded px-2 py-1 cursor-pointer text-center">
@@ -527,47 +538,15 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                       </div>
                     )}
 
-                    {isAdmin && !monthDetail.isClub && (
+                    {!monthDetail.isClub && !p.isDrawer && (
                       <button
                         onClick={() => handleAssignDraw(p.memberId)}
                         disabled={assignLocked}
-                        title={p.isDrawer ? undefined : assignLockTitle}
+                        title={assignLockTitle}
                         className="text-xs bg-navy/10 text-navy px-2.5 py-1 rounded-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        {p.isDrawer ? '✓ Assigned' : 'Assign as Drawer'}
+                        Assign as Drawer
                       </button>
-                    )}
-                    {isAdmin && p.isDrawer && monthDetail.isCurrentMonth && (
-                      <div className="w-full space-y-1.5 mt-1">
-                        <select
-                          value={changingDrawerTo}
-                          onChange={(e) => setChangingDrawerTo(e.target.value)}
-                          className="w-full rounded-md border border-line bg-white px-2 py-1.5 text-xs"
-                          disabled={changingDrawer}
-                        >
-                          <option value="">Change drawer…</option>
-                          {monthDetail.participants.filter((candidate) => candidate.memberId !== p.memberId).map((candidate) => (
-                            <option key={candidate.memberId} value={candidate.memberId}>{candidate.name}</option>
-                          ))}
-                        </select>
-                        {changingDrawerTo && (
-                          <button
-                            onClick={handleChangeDrawer}
-                            disabled={changingDrawer}
-                            className="w-full text-xs bg-navy text-white px-2.5 py-1.5 rounded-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            {changingDrawer ? 'Changing…' : 'Confirm Change'}
-                          </button>
-                        )}
-                        <button
-                          onClick={handleRecallDraw}
-                          disabled={recalling || changingDrawer}
-                          title="Undo this assignment and re-open the month for Assign/Shuffle."
-                          className="w-full text-xs text-danger underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          {recalling ? 'Recalling…' : 'Recall drawer'}
-                        </button>
-                      </div>
                     )}
                   </div>
                 ))}

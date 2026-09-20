@@ -346,10 +346,15 @@ async function getMonthTimeline(chit) {
     const isClub = i === CLUB_SLOT_INDEX;
 
     const paymentsResult = await query(
-      `SELECT paid FROM chit_month_payments WHERE chit_month_data_id = $1`,
-      [md.id]
+      `SELECT p.member_id, p.paid
+       FROM chit_month_payments p
+       JOIN chit_members cm ON cm.member_id = p.member_id AND cm.chit_id = $2 AND cm.is_active = TRUE
+       WHERE p.chit_month_data_id = $1`,
+      [md.id, chit.id]
     );
-    const paidCount = paymentsResult.rows.filter((p) => p.paid).length;
+    const paidMemberIds = new Set(paymentsResult.rows.filter((p) => p.paid).map((p) => p.member_id));
+    const participants = await getParticipants(chit.id);
+    const paidCount = participants.reduce((count, participant) => count + (paidMemberIds.has(participant.member_id) ? 1 : 0), 0);
 
     timeline.push({
       monthIndex: i,
@@ -367,7 +372,7 @@ async function getMonthTimeline(chit) {
 async function getMonthDetail(chit, monthIndex) {
   const monthDataByIndex = await ensureMonthData(chit);
   const md = monthDataByIndex.get(monthIndex);
-  const slots = await getSlotArray(chit);
+  const participantsList = await getParticipants(chit.id);
   const isClub = monthIndex === CLUB_SLOT_INDEX;
 
   const paymentsResult = await query(
@@ -382,13 +387,15 @@ async function getMonthDetail(chit, monthIndex) {
     [md.id]
   );
 
-  const participantSlots = slots.filter((s, idx) => s && !s.isClub && idx !== CLUB_SLOT_INDEX);
-
-  const participants = participantSlots.map((s) => ({
-    memberId: s.memberId,
-    name: s.name,
-    paid: !!paidByMember.get(s.memberId),
-    isDrawer: md.drawn_by_member_id === s.memberId,
+  // Build the payment/draw list directly from active chit_members rather than
+  // reconstructing it from the fixed slot array. This prevents valid participant
+  // rows from disappearing when legacy/duplicate slot data is present.
+  const participants = participantsList.map((p) => ({
+    memberId: p.member_id,
+    name: p.name,
+    slotNumber: p.slot_number,
+    paid: !!paidByMember.get(p.member_id),
+    isDrawer: md.drawn_by_member_id === p.member_id,
   }));
 
   return {
@@ -466,7 +473,7 @@ async function markAllPaidForMonth(chitId, monthIndex) {
   return { monthIndex, markedCount: participants.length };
 }
 
-async function assignDraw(chitId, monthIndex, memberId, actingUserId) {
+async function assignDraw(chitId, monthIndex, memberId, actingUserId, replaceExisting = false) {
   if (monthIndex === CLUB_SLOT_INDEX) {
     throw ApiError.badRequest("Month 2 is always reserved for Jolly Friends Club - it can't be reassigned.");
   }
@@ -485,22 +492,22 @@ async function assignDraw(chitId, monthIndex, memberId, actingUserId) {
   }
   const monthDataByIndex = await ensureMonthData(chit);
   const md = monthDataByIndex.get(monthIndex);
-  if (md.shuffled) {
-    throw ApiError.badRequest("This month was already decided by shuffle - the result is final and can't be changed.");
+  if (md.shuffled && !replaceExisting) {
+    throw ApiError.badRequest("This month was already decided by shuffle - use Change Drawer if you need to correct it.");
   }
-  // Bug fix: previously only `shuffled` was checked here, so a month that
-  // already had a manually-assigned drawer could silently be reassigned to
-  // someone else. Once a drawer exists for a month (by any method), Assign
-  // is locked for that month.
-  if (md.drawn_by_member_id) {
-    throw ApiError.badRequest('A drawer has already been assigned for this month.');
+  if (md.drawn_by_member_id && !replaceExisting) {
+    throw ApiError.badRequest('A drawer has already been assigned for this month. Use Change Drawer to replace it.');
   }
-  await query(`UPDATE chit_month_data SET drawn_by_member_id = $1 WHERE id = $2`, [memberId || null, md.id]);
+  const participants = await getParticipants(chitId);
+  if (!participants.some((p) => p.member_id === memberId)) {
+    throw ApiError.badRequest('The selected drawer must be an active participant of this chit.');
+  }
+  const previousMemberId = md.drawn_by_member_id;
+  await query(`UPDATE chit_month_data SET drawn_by_member_id = $1, shuffled = FALSE WHERE id = $2`, [memberId || null, md.id]);
 
   if (memberId) {
     const winnerName = await getMemberName(memberId);
     const monthLabel = chitMonthLabel(chit.start_date, monthIndex);
-    const participants = await getParticipants(chitId);
     for (const participant of participants) {
       await notificationService.dispatch({
         memberId: participant.member_id,
@@ -520,70 +527,6 @@ async function assignDraw(chitId, monthIndex, memberId, actingUserId) {
  * current-month window as assignDraw/performShuffle - a past month's
  * result is final and can't be recalled.
  */
-async function changeDraw(chitId, monthIndex, memberId, actingUserId) {
-  if (monthIndex === CLUB_SLOT_INDEX) {
-    throw ApiError.badRequest("Month 2 is reserved for Jolly Friends Club and cannot be reassigned.");
-  }
-  if (!memberId) throw ApiError.badRequest('Select a new drawer.');
-
-  const chit = await getById(chitId);
-  const elapsed = chitMonthsElapsed(chit.start_date, chit.total_months);
-  if (monthIndex !== elapsed) {
-    throw ApiError.badRequest(
-      monthIndex < elapsed
-        ? 'This month has already passed - the drawer can no longer be changed.'
-        : "This month hasn't opened yet."
-    );
-  }
-
-  const monthDataByIndex = await ensureMonthData(chit);
-  const md = monthDataByIndex.get(monthIndex);
-  if (!md.drawn_by_member_id) {
-    throw ApiError.badRequest('No drawer is currently assigned for this month.');
-  }
-  if (md.drawn_by_member_id === memberId) {
-    throw ApiError.badRequest('The selected member is already the drawer.');
-  }
-
-  const participant = await query(
-    `SELECT m.id, m.name
-     FROM chit_members cm
-     JOIN members m ON m.id = cm.member_id
-     WHERE cm.chit_id = $1 AND cm.member_id = $2 AND cm.is_active = TRUE
-     LIMIT 1`,
-    [chitId, memberId]
-  );
-  if (!participant.rows[0]) {
-    throw ApiError.badRequest('The new drawer must be an active participant of this chit.');
-  }
-
-  const previousMemberId = md.drawn_by_member_id;
-  const previousName = await getMemberName(previousMemberId);
-  const newName = participant.rows[0].name;
-
-  // A changed result is a deliberate manual assignment, so clear the
-  // shuffle flag and keep one authoritative drawer field for every screen.
-  await query(
-    `UPDATE chit_month_data SET drawn_by_member_id = $1, shuffled = FALSE WHERE id = $2`,
-    [memberId, md.id]
-  );
-
-  const monthLabel = chitMonthLabel(chit.start_date, monthIndex);
-  const participants = await getParticipants(chitId);
-  for (const p of participants) {
-    await notificationService.dispatch({
-      memberId: p.member_id,
-      channel: 'WHATSAPP',
-      type: 'AUCTION_WON',
-      subject: `${chit.ref_number} - ${monthLabel} drawer changed`,
-      body: `The drawer for ${chit.ref_number} - ${monthLabel} was changed from ${previousName} to ${newName}.`,
-      createdById: actingUserId,
-    });
-  }
-
-  return { previousMemberId, previousName, newMemberId: memberId, newName };
-}
-
 async function recallDraw(chitId, monthIndex, actingUserId) {
   if (monthIndex === CLUB_SLOT_INDEX) {
     throw ApiError.badRequest("Month 2 is always reserved for Jolly Friends Club - there's no drawer to recall.");
@@ -988,7 +931,6 @@ module.exports = {
   payForMonth,
   markAllPaidForMonth,
   assignDraw,
-  changeDraw,
   recallDraw,
   submitRequest,
   cancelRequest,
