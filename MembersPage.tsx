@@ -1,0 +1,181 @@
+import { useEffect, useState } from 'react';
+import client from '../api/client';
+import type { Member } from '../types';
+import { useAuth } from '../context/AuthContext';
+
+export default function MembersPage() {
+  const { user } = useAuth();
+  const [members, setMembers] = useState<Member[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ name: '', mobileNumber: '', email: '', aadhaarNumber: '' });
+  const [error, setError] = useState<string | null>(null);
+  const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+
+  async function load() {
+    setLoading(true);
+    try {
+      const pageSize = 100;
+      const first = await client.get('/members', { params: { page: 1, pageSize, search: search || undefined } });
+      const firstPage = first.data;
+      const totalPages = firstPage.pagination?.totalPages || 1;
+      const remaining = await Promise.all(
+        Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) =>
+          client.get('/members', { params: { page: index + 2, pageSize, search: search || undefined } })
+        )
+      );
+      setMembers([...firstPage.data, ...remaining.flatMap((res) => res.data.data)]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const t = setTimeout(load, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  async function handleAddMember(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    try {
+      await client.post('/members', form);
+      setForm({ name: '', mobileNumber: '', email: '', aadhaarNumber: '' });
+      setShowForm(false);
+      load();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Could not add member.');
+    }
+  }
+
+  async function handleResetPassword(id: string, name: string) {
+    if (!window.confirm(`Reset ${name}'s password? They'll need to set a new one next time they log in with their Aadhaar.`)) return;
+    try {
+      const res = await client.post(`/members/${id}/reset-password`);
+      window.alert(res.data.message);
+    } catch (err: any) {
+      window.alert(err?.response?.data?.message || 'Could not reset password.');
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-end">
+        {canManage && (
+          <button
+            onClick={() => setShowForm((s) => !s)}
+            className="rounded-lg bg-navy text-white px-4 py-2 text-sm font-medium hover:bg-navy-light transition-colors cursor-pointer"
+          >
+            {showForm ? 'Cancel' : '+ Add member'}
+          </button>
+        )}
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleAddMember} className="ledger-card p-5 grid grid-cols-2 gap-4">
+          <input
+            required
+            placeholder="Full name"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            className="rounded-lg border border-line px-3 py-2 text-sm"
+          />
+          <input
+            required
+            placeholder="Mobile number (10 digits)"
+            value={form.mobileNumber}
+            onChange={(e) => setForm({ ...form, mobileNumber: e.target.value })}
+            className="rounded-lg border border-line px-3 py-2 text-sm"
+          />
+          <input
+            placeholder="Email (optional)"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            className="rounded-lg border border-line px-3 py-2 text-sm"
+          />
+          <input
+            placeholder="Aadhaar number (optional, 12 digits)"
+            value={form.aadhaarNumber}
+            onChange={(e) => setForm({ ...form, aadhaarNumber: e.target.value })}
+            className="rounded-lg border border-line px-3 py-2 text-sm"
+          />
+          {error && <p className="col-span-2 text-sm text-danger">{error}</p>}
+          <button type="submit" className="col-span-2 rounded-lg bg-gold text-navy py-2 text-sm font-medium">
+            Save member
+          </button>
+        </form>
+      )}
+
+      <input
+        placeholder="Search by name or mobile number…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="w-full max-w-sm rounded-lg border border-line px-3 py-2 text-sm"
+      />
+
+      <div className="ledger-card overflow-hidden">
+        <div className="table-scroll">
+        <table className="w-full min-w-[720px] text-sm">
+          <thead className="bg-navy-light text-white text-xs uppercase tracking-wide">
+            <tr>
+              <th className="text-left px-4 py-3">Name</th>
+              {canManage && <th className="text-left px-4 py-3">Mobile</th>}
+              <th className="text-left px-4 py-3">Aadhaar</th>
+              <th className="text-left px-4 py-3">Status</th>
+              {canManage && <th className="text-left px-4 py-3">Action</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={canManage ? 5 : 3} className="px-4 py-6 text-center text-ink-muted">
+                  Loading…
+                </td>
+              </tr>
+            ) : members.length === 0 ? (
+              <tr>
+                <td colSpan={canManage ? 5 : 3} className="px-4 py-6 text-center text-ink-muted">
+                  No members found.
+                </td>
+              </tr>
+            ) : (
+              members.map((m, idx) => (
+                <tr key={m.id} className={`transition-colors hover:bg-[#dbe6f5] ${idx % 2 === 0 ? 'bg-[#eef2f9]' : 'bg-[#f8fafc]'}`}>
+                  <td className="px-4 py-3 font-medium">{m.name}</td>
+                  {canManage && <td className="px-4 py-3 font-tabular">{m.mobileNumber || '—'}</td>}
+                  <td className="px-4 py-3 font-tabular text-ink-muted">{m.aadhaarMasked}</td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        m.status === 'ACTIVE'
+                          ? 'bg-success/10 text-success'
+                          : m.status === 'SUSPENDED'
+                            ? 'bg-danger/10 text-danger'
+                            : 'bg-line text-ink-muted'
+                      }`}
+                    >
+                      {m.status}
+                    </span>
+                  </td>
+                  {canManage && (
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => handleResetPassword(m.id, m.name)}
+                        className="text-xs text-navy bg-navy/10 px-2.5 py-1 rounded-md cursor-pointer hover:bg-navy/20 transition-colors whitespace-nowrap"
+                      >
+                        Reset Password
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+  );
+}
