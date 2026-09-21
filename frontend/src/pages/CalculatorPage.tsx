@@ -212,9 +212,12 @@ function CalculatorResult({ cv, lakh, months, rate }: { cv: number; lakh: number
   const minPayout = Math.min(...rows.map((r) => r.payout));
   const totalPayout = rows.reduce((s, r) => s + r.payout, 0);
   const grandTotal = rows.reduce((s, r) => s + r.totalColl, 0);
-  // The Association keeps the portion not paid to members.  This is derived
-  // from the schedule itself so it always matches the round-wise figures.
-  const associationProfit = grandTotal - totalPayout;
+  const clubPayout = rows[1]?.payout ?? 0;
+  // The Association occupies the reserved second-month slot. It receives
+  // that payout, but also pays one monthly installment in every round.
+  const associationMonthlyPayments = totalPaying;
+  const totalAssociationIncome = totalComm + clubPayout;
+  const netAssociationProfit = totalAssociationIncome - associationMonthlyPayments;
   const isEstimate = !(months === 20 && lakh === 50);
 
   return (
@@ -226,14 +229,16 @@ function CalculatorResult({ cv, lakh, months, rate }: { cv: number; lakh: number
         <SummaryCard label="Max Monthly Paying" value={INRi(maxPaying)} sub={`Round ${months} (no discount)`} accent="teal" />
         <SummaryCard label="Commission / Month" value={INRi(commPerMonth)} sub={`₹${commRate.toLocaleString('en-IN')} × ${lakh}L (${months}M rate)`} accent="purp" />
         <SummaryCard label="Total Commission" value={INRi(totalComm)} sub={`${INRi(commPerMonth)} × ${months} months`} accent="purp" />
-        <SummaryCard label="Association Profit" value={INRi(associationProfit)} sub="Total collection − member payouts" accent="navy" />
+        <SummaryCard label="2nd Month Club Payout" value={INRi(clubPayout)} sub="Full chit amount received by Association" accent="green" />
+        <SummaryCard label="Association Monthly Payments" value={INRi(associationMonthlyPayments)} sub={`${months} monthly payments made by Association`} accent="gold" />
+        <SummaryCard label="Net Association Profit" value={INRi(netAssociationProfit)} sub="Commission + Club payout − monthly payments" accent="navy" />
         <SummaryCard label="Max Payout to Member" value={INRi(maxPayout)} sub="Highest amount received" accent="green" />
         <SummaryCard label="Min Payout to Member" value={INRi(minPayout)} sub="Lowest amount received" accent="green" />
       </div>
 
       <div className="bg-[#eef5f7] border border-[#c9dbe3] rounded-xl px-4 py-3 text-sm text-[#1b4965]">
-        <span className="font-bold">Association Profit:</span> {INRi(grandTotal)} total collection − {INRi(totalPayout)} paid to members = <span className="font-extrabold">{INRi(associationProfit)}</span>.
-        <span className="text-xs text-ink-muted"> This is the commission profit for the selected chit plan; cash-flow and future multiple-draw planning will remain in the separate feature.</span>
+        <span className="font-bold">Net Association Profit:</span> {INRi(totalComm)} commission + {INRi(clubPayout)} 2nd-month Club payout − {INRi(associationMonthlyPayments)} Association monthly payments = <span className="font-extrabold">{INRi(netAssociationProfit)}</span>.
+        <span className="text-xs text-ink-muted"> The monthly-payment total is automatically calculated from the schedule above. Future multiple-draw cash-flow planning will remain in the separate feature.</span>
       </div>
 
       <div className="bg-white border border-line rounded-xl overflow-hidden shadow-md">
