@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 // ── Formulas replicated exactly from the JFC prototype's embedded calculator ──
 const COMM_PER_LAKH_20M = 1500; // ₹1,500 per lakh per month (Standard, 20 months)
@@ -201,12 +201,6 @@ export default function CalculatorPage() {
 
 function CalculatorResult({ cv, lakh, months, rate }: { cv: number; lakh: number; months: number; rate: 'standard' | 'jfc' }) {
   const rows = buildRows(cv, months, rate);
-  const [expensesByRound, setExpensesByRound] = useState<Record<number, string>>({});
-
-  useEffect(() => {
-    setExpensesByRound({});
-  }, [cv, months, rate]);
-
   const commRate = rate === 'jfc' ? (months === 20 ? JFC_COMM_PER_LAKH_20M : JFC_COMM_PER_LAKH_10M) : months === 20 ? COMM_PER_LAKH_20M : COMM_PER_LAKH_10M;
   const commPerMonth = commRate * lakh;
   const totalComm = rows.reduce((s, r) => s + r.commPerMonth, 0);
@@ -219,9 +213,11 @@ function CalculatorResult({ cv, lakh, months, rate }: { cv: number; lakh: number
   const totalPayout = rows.reduce((s, r) => s + r.payout, 0);
   const grandTotal = rows.reduce((s, r) => s + r.totalColl, 0);
   const clubPayout = rows[1]?.payout ?? 0;
-  const totalExpenses = rows.reduce((sum, row) => sum + (Number(expensesByRound[row.round]) || 0), 0);
+  // The Association occupies the reserved second-month slot. It receives
+  // that payout, but also pays one monthly installment in every round.
+  const associationMonthlyPayments = totalPaying;
   const totalAssociationIncome = totalComm + clubPayout;
-  const netAssociationProfit = totalAssociationIncome - totalExpenses;
+  const netAssociationProfit = totalAssociationIncome - associationMonthlyPayments;
   const isEstimate = !(months === 20 && lakh === 50);
 
   return (
@@ -234,15 +230,15 @@ function CalculatorResult({ cv, lakh, months, rate }: { cv: number; lakh: number
         <SummaryCard label="Commission / Month" value={INRi(commPerMonth)} sub={`₹${commRate.toLocaleString('en-IN')} × ${lakh}L (${months}M rate)`} accent="purp" />
         <SummaryCard label="Total Commission" value={INRi(totalComm)} sub={`${INRi(commPerMonth)} × ${months} months`} accent="purp" />
         <SummaryCard label="2nd Month Club Payout" value={INRi(clubPayout)} sub="Full chit amount received by Association" accent="green" />
-        <SummaryCard label="Monthly Expenses" value={INRi(totalExpenses)} sub="Enter each round's Association expense below" accent="gold" />
-        <SummaryCard label="Net Association Profit" value={INRi(netAssociationProfit)} sub="Commission + Club payout − expenses" accent="navy" />
+        <SummaryCard label="Association Monthly Payments" value={INRi(associationMonthlyPayments)} sub={`${months} monthly payments made by Association`} accent="gold" />
+        <SummaryCard label="Net Association Profit" value={INRi(netAssociationProfit)} sub="Commission + Club payout − monthly payments" accent="navy" />
         <SummaryCard label="Max Payout to Member" value={INRi(maxPayout)} sub="Highest amount received" accent="green" />
         <SummaryCard label="Min Payout to Member" value={INRi(minPayout)} sub="Lowest amount received" accent="green" />
       </div>
 
       <div className="bg-[#eef5f7] border border-[#c9dbe3] rounded-xl px-4 py-3 text-sm text-[#1b4965]">
-        <span className="font-bold">Net Association Profit:</span> {INRi(totalComm)} commission + {INRi(clubPayout)} 2nd-month Club payout − {INRi(totalExpenses)} expenses = <span className="font-extrabold">{INRi(netAssociationProfit)}</span>.
-        <span className="text-xs text-ink-muted"> Enter monthly Association expenses in the schedule below. Future multiple-draw cash-flow planning will remain in the separate feature.</span>
+        <span className="font-bold">Net Association Profit:</span> {INRi(totalComm)} commission + {INRi(clubPayout)} 2nd-month Club payout − {INRi(associationMonthlyPayments)} Association monthly payments = <span className="font-extrabold">{INRi(netAssociationProfit)}</span>.
+        <span className="text-xs text-ink-muted"> The monthly-payment total is automatically calculated from the schedule above. Future multiple-draw cash-flow planning will remain in the separate feature.</span>
       </div>
 
       <div className="bg-white border border-line rounded-xl overflow-hidden shadow-md">
@@ -266,7 +262,6 @@ function CalculatorResult({ cv, lakh, months, rate }: { cv: number; lakh: number
                 <th className="bg-[#1b4965] text-white text-xs font-extrabold uppercase tracking-wide px-4 py-3 text-right">Total Collection<br /><span className="font-normal opacity-75 normal-case">× {months} Members</span></th>
                 <th className="bg-[#3b1a7a] text-[#e9d5ff] text-xs font-extrabold uppercase tracking-wide px-4 py-3 text-right">Commission<br /><span className="font-normal opacity-75 normal-case">Deducted</span></th>
                 <th className="bg-[#1b4965] text-white text-xs font-extrabold uppercase tracking-wide px-4 py-3 text-right">Member Payout<br /><span className="font-normal opacity-75 normal-case">After Commission</span></th>
-                <th className="bg-[#92400e] text-white text-xs font-extrabold uppercase tracking-wide px-4 py-3 text-right">Association Expense<br /><span className="font-normal opacity-75 normal-case">This round</span></th>
               </tr>
             </thead>
             <tbody>
@@ -277,19 +272,6 @@ function CalculatorResult({ cv, lakh, months, rate }: { cv: number; lakh: number
                   <td className="text-right font-semibold text-[#334155] px-4 py-2.5 whitespace-nowrap">{INR(r.totalColl)}</td>
                   <td className="text-right font-bold text-[#6d28d9] bg-[#6d28d90a] px-4 py-2.5 whitespace-nowrap">{INR(r.commPerMonth)}</td>
                   <td className="text-right font-bold text-[#1d4ed8] px-4 py-2.5 whitespace-nowrap">{INR(r.payout)}</td>
-                  <td className="px-3 py-2.5 min-w-36">
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      inputMode="numeric"
-                      value={expensesByRound[r.round] ?? ''}
-                      onChange={(event) => setExpensesByRound((current) => ({ ...current, [r.round]: event.target.value }))}
-                      placeholder="₹ 0"
-                      aria-label={`Association expense for round ${r.round}`}
-                      className="w-full rounded-md border border-[#d8b47a] bg-[#fffbeb] px-2 py-1.5 text-right text-sm font-semibold text-[#78350f] outline-none focus:ring-2 focus:ring-[#d97706]/30"
-                    />
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -300,7 +282,6 @@ function CalculatorResult({ cv, lakh, months, rate }: { cv: number; lakh: number
                 <td className="text-right font-extrabold px-4 py-3 whitespace-nowrap">{INR(grandTotal)}</td>
                 <td className="text-right font-extrabold text-[#6d28d9] bg-[#f0eeff] px-4 py-3 whitespace-nowrap">{INR(totalComm)}</td>
                 <td className="text-right font-extrabold text-[#1d4ed8] px-4 py-3 whitespace-nowrap">{INR(totalPayout)}</td>
-                <td className="text-right font-extrabold text-[#92400e] bg-[#fffbeb] px-4 py-3 whitespace-nowrap">{INR(totalExpenses)}</td>
               </tr>
             </tfoot>
           </table>
