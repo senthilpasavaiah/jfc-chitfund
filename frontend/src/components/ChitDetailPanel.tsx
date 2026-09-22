@@ -30,7 +30,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   const [chit, setChit] = useState<ChitDetail | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(0);
   const [monthDetail, setMonthDetail] = useState<ChitMonthDetail | null>(null);
-  const [panel, setPanel] = useState<'none' | 'participants' | 'ledger'>('none');
+  const [panel, setPanel] = useState<'none' | 'participants' | 'ledger' | 'multiple'>('none');
   const [ledger, setLedger] = useState<Ledger | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [shuffling, setShuffling] = useState(false);
@@ -47,6 +47,9 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   const [changingDrawer, setChangingDrawer] = useState(false);
   const [changeDrawerId, setChangeDrawerId] = useState('');
   const [changingDrawerSaving, setChangingDrawerSaving] = useState(false);
+  const [multipleMemberIds, setMultipleMemberIds] = useState<string[]>([]);
+  const [gapMonthIndexes, setGapMonthIndexes] = useState<number[]>([]);
+  const [savingMultipleDraw, setSavingMultipleDraw] = useState(false);
 
   // Tracks whether we've already auto-picked "the current month" for THIS
   // chit id. Previously the auto-pick logic ran on every loadChit() call
@@ -114,7 +117,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     setPendingProofs(res.data.data);
   }
 
-  function togglePanel(p: 'participants' | 'ledger') {
+  function togglePanel(p: 'participants' | 'ledger' | 'multiple') {
     setError(null);
     setSuccessMessage(null);
     if (panel === p) {
@@ -124,6 +127,18 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     setPanel(p);
     if (p === 'ledger') loadLedger();
     if (p === 'participants') loadPendingProofs();
+  }
+
+  async function handleMultipleDraw() {
+    if (!monthDetail || multipleMemberIds.length < 2 || gapMonthIndexes.length !== multipleMemberIds.length - 1 || savingMultipleDraw) return;
+    if (!window.confirm(`Record ${multipleMemberIds.length} members as drawers for ${monthDetail.label} and reserve ${gapMonthIndexes.length} future gap month(s)?`)) return;
+    setSavingMultipleDraw(true); setError(null);
+    try {
+      await client.post(`/chits/${id}/months/${selectedMonth}/multiple-draw`, { memberIds: multipleMemberIds, gapMonthIndexes });
+      await Promise.all([loadMonth(selectedMonth), loadChit()]);
+      setMultipleMemberIds([]); setGapMonthIndexes([]); setSuccessMessage('Multiple Draw and future gap months saved.');
+    } catch (err: any) { setError(err?.response?.data?.message || 'Could not save Multiple Draw.'); }
+    finally { setSavingMultipleDraw(false); }
   }
 
   async function handleTogglePaid(memberId: string, currentlyPaid: boolean) {
@@ -368,6 +383,8 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   const uniqueDrawerParticipants = monthDetail
     ? Array.from(new Map(monthDetail.participants.map((p) => [p.memberId, p])).values())
     : [];
+  const canPlanMultipleDraw = !!monthDetail && monthDetail.isCurrentMonth && !monthDetail.isClub && !monthDetail.drawnByMemberId && !monthDetail.isGapMonth;
+  const gapCandidates = chit.timeline.filter((month) => month.monthIndex > selectedMonth && month.monthIndex !== 1 && !month.drawnByMemberId && !month.isGapMonth);
 
   return (
     <div className="space-y-5">
@@ -401,6 +418,9 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
           <button onClick={() => togglePanel('participants')} className="h-10 rounded-lg border border-line bg-white px-3 text-sm font-medium cursor-pointer hover:border-navy-light truncate">
             {panel === 'participants' ? 'Hide Participants' : 'View Participants'}
           </button>
+          <button onClick={() => togglePanel('multiple')} disabled={!canPlanMultipleDraw} title={canPlanMultipleDraw ? 'Plan multiple drawers and future gap months' : 'Available only for an open current normal month.'} className="h-10 rounded-lg border border-gold bg-gold/10 text-gold-dim px-3 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer truncate">
+            {panel === 'multiple' ? 'Hide Multiple Draw' : 'Multiple Draw Planner'}
+          </button>
           {/* Shuffle stays visible even after use (or when locked) - just fades to show it's not usable, rather than disappearing and shifting the layout. */}
           <button
             onClick={handleShuffle}
@@ -428,6 +448,22 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
       {shuffleResult && (
         <div className="ledger-card p-4 bg-gold/10 border-gold text-center">
           <p className="text-sm">🎉 <strong>{shuffleResult.winnerName}</strong> was drawn for {monthDetail?.label}!</p>
+        </div>
+      )}
+
+      {isAdmin && monthDetail && panel === 'multiple' && (
+        <div className="ledger-card p-5 border border-gold bg-[#fffbeb]">
+          <h3 className="font-bold text-navy">Multiple Member Draw — {monthDetail.label}</h3>
+          <p className="text-xs text-ink-muted mt-1 mb-4">Choose two or more members. The system requires one future gap month for every extra drawer. Each selected member receives the current month's payout and cannot draw again in this chit.</p>
+          <div className="grid md:grid-cols-2 gap-5">
+            <div><div className="text-xs font-bold uppercase text-ink-muted mb-2">Drawers</div><div className="space-y-1.5 max-h-52 overflow-y-auto">
+              {uniqueDrawerParticipants.map((participant) => <label key={participant.memberId} className="flex items-center gap-2 text-sm bg-white border border-line rounded p-2 cursor-pointer"><input type="checkbox" checked={multipleMemberIds.includes(participant.memberId)} onChange={() => setMultipleMemberIds((current) => current.includes(participant.memberId) ? current.filter((memberId) => memberId !== participant.memberId) : [...current, participant.memberId])} />{participant.name}</label>)}
+            </div></div>
+            <div><div className="text-xs font-bold uppercase text-ink-muted mb-2">Future gap months <span className="normal-case">({multipleMemberIds.length ? `${multipleMemberIds.length - 1} required` : 'select drawers first'})</span></div><div className="space-y-1.5 max-h-52 overflow-y-auto">
+              {gapCandidates.map((month) => <label key={month.monthIndex} className="flex items-center gap-2 text-sm bg-white border border-line rounded p-2 cursor-pointer"><input type="checkbox" checked={gapMonthIndexes.includes(month.monthIndex)} onChange={() => setGapMonthIndexes((current) => current.includes(month.monthIndex) ? current.filter((index) => index !== month.monthIndex) : [...current, month.monthIndex])} />Month {month.monthIndex + 1} — {month.label}</label>)}
+            </div></div>
+          </div>
+          <button onClick={handleMultipleDraw} disabled={savingMultipleDraw || multipleMemberIds.length < 2 || gapMonthIndexes.length !== multipleMemberIds.length - 1} className="mt-4 bg-navy text-white px-4 py-2 rounded-md text-sm font-medium disabled:opacity-40 cursor-pointer">{savingMultipleDraw ? 'Saving…' : 'Confirm Multiple Draw & Gap Months'}</button>
         </div>
       )}
 

@@ -61,6 +61,8 @@ export interface ChitMonthSummary {
   drawnBy: string | null;
   drawnByMemberId: string | null;
   shuffled: boolean;
+  isGapMonth?: boolean;
+  multipleDrawerCount?: number;
   paidCount: number;
   capacity: number;
 }
@@ -96,6 +98,10 @@ export interface ChitMonthDetail {
   isCurrentMonth: boolean;
   drawnByName: string | null;
   drawnByMemberId: string | null;
+  drawnByMembers?: { memberId: string; name: string; payout: number }[];
+  isMultipleDraw?: boolean;
+  isGapMonth?: boolean;
+  gapSourceMonthIndex?: number | null;
   shuffled: boolean;
   participants: ChitMonthParticipant[];
   requests: ChitMonthRequest[];
