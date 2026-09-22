@@ -35,6 +35,13 @@ router.patch(
   validate,
   chitController.updateRefNumber
 );
+router.post(
+  '/:id/months/:monthIndex/multiple-draw',
+  authorize('ADMIN', 'MANAGER'),
+  [...monthParams, body('memberIds').isArray({ min: 2 }), body('memberIds.*').isUUID(), body('gapMonthIndexes').isArray({ min: 1 }), body('gapMonthIndexes.*').isInt({ min: 0 })],
+  validate,
+  chitController.assignMultipleDraw
+);
 
 router.post(
   '/:id/members',

@@ -336,14 +336,42 @@ async function getMemberName(memberId) {
   return rows[0]?.name || null;
 }
 
+async function getMultipleDrawsForChit(chitId) {
+  const { rows } = await query(
+    `SELECT d.source_month_index, d.member_id, d.payout_amount, m.name
+     FROM chit_multiple_draws d JOIN members m ON m.id = d.member_id
+     WHERE d.chit_id = $1 ORDER BY d.source_month_index, d.created_at`,
+    [chitId]
+  );
+  return rows;
+}
+
+async function getGapMonthsForChit(chitId) {
+  const { rows } = await query(
+    `SELECT month_index, source_month_index FROM chit_gap_months WHERE chit_id = $1 ORDER BY month_index`,
+    [chitId]
+  );
+  return rows;
+}
+
 async function getMonthTimeline(chit) {
   const monthDataByIndex = await ensureMonthData(chit);
   const capacity = chitCapacity(chit.total_months);
+  const multipleDraws = await getMultipleDrawsForChit(chit.id);
+  const gaps = await getGapMonthsForChit(chit.id);
+  const drawsByMonth = new Map();
+  for (const draw of multipleDraws) {
+    const existing = drawsByMonth.get(draw.source_month_index) || [];
+    existing.push(draw);
+    drawsByMonth.set(draw.source_month_index, existing);
+  }
+  const gapMonths = new Set(gaps.map((gap) => gap.month_index));
 
   const timeline = [];
   for (let i = 0; i < chit.total_months; i++) {
     const md = monthDataByIndex.get(i);
     const isClub = i === CLUB_SLOT_INDEX;
+    const draws = drawsByMonth.get(i) || [];
 
     const paymentsResult = await query(
       `SELECT p.member_id, p.paid
@@ -359,9 +387,11 @@ async function getMonthTimeline(chit) {
     timeline.push({
       monthIndex: i,
       label: chitMonthLabel(chit.start_date, i),
-      drawnBy: isClub ? CLUB_NAME : md.drawn_by_member_id ? await getMemberName(md.drawn_by_member_id) : null,
-      drawnByMemberId: isClub ? null : md.drawn_by_member_id,
+      drawnBy: isClub ? CLUB_NAME : draws.length ? draws.map((draw) => draw.name).join(', ') : md.drawn_by_member_id ? await getMemberName(md.drawn_by_member_id) : null,
+      drawnByMemberId: isClub ? null : draws[0]?.member_id || md.drawn_by_member_id,
       shuffled: isClub ? true : md.shuffled,
+      isGapMonth: gapMonths.has(i),
+      multipleDrawerCount: draws.length,
       paidCount,
       capacity,
     });
@@ -374,6 +404,10 @@ async function getMonthDetail(chit, monthIndex) {
   const md = monthDataByIndex.get(monthIndex);
   const participantsList = await getParticipants(chit.id);
   const isClub = monthIndex === CLUB_SLOT_INDEX;
+  const [multipleDraws, gapMonths] = await Promise.all([getMultipleDrawsForChit(chit.id), getGapMonthsForChit(chit.id)]);
+  const drawsForMonth = multipleDraws.filter((draw) => draw.source_month_index === monthIndex);
+  const drawerIds = new Set(drawsForMonth.map((draw) => draw.member_id));
+  const gap = gapMonths.find((item) => item.month_index === monthIndex);
 
   const paymentsResult = await query(
     `SELECT member_id, paid FROM chit_month_payments WHERE chit_month_data_id = $1`,
@@ -395,7 +429,7 @@ async function getMonthDetail(chit, monthIndex) {
     name: p.name,
     slotNumber: p.slot_number,
     paid: !!paidByMember.get(p.member_id),
-    isDrawer: md.drawn_by_member_id === p.member_id,
+    isDrawer: drawerIds.size ? drawerIds.has(p.member_id) : md.drawn_by_member_id === p.member_id,
   }));
 
   return {
@@ -407,8 +441,12 @@ async function getMonthDetail(chit, monthIndex) {
     // enforces in assignDraw/performShuffle, exposed here so the UI can
     // match it instead of drifting out of sync.
     isCurrentMonth: monthIndex === chitMonthsElapsed(chit.start_date, chit.total_months),
-    drawnByName: isClub ? CLUB_NAME : md.drawn_by_member_id ? await getMemberName(md.drawn_by_member_id) : null,
-    drawnByMemberId: isClub ? null : md.drawn_by_member_id,
+    drawnByName: isClub ? CLUB_NAME : drawsForMonth.length ? drawsForMonth.map((draw) => draw.name).join(', ') : md.drawn_by_member_id ? await getMemberName(md.drawn_by_member_id) : null,
+    drawnByMemberId: isClub ? null : drawsForMonth[0]?.member_id || md.drawn_by_member_id,
+    drawnByMembers: drawsForMonth.map((draw) => ({ memberId: draw.member_id, name: draw.name, payout: Number(draw.payout_amount) })),
+    isMultipleDraw: drawsForMonth.length > 1,
+    isGapMonth: !!gap,
+    gapSourceMonthIndex: gap?.source_month_index ?? null,
     shuffled: isClub ? true : md.shuffled,
     participants,
     requests: requestsResult.rows.map((r) => ({ memberId: r.member_id, name: r.name, type: r.type })),
@@ -509,6 +547,67 @@ async function assignDraw(chitId, monthIndex, memberId, actingUserId, replaceExi
       });
     }
   }
+}
+
+/**
+ * Records two or more members receiving the current month's payout and
+ * reserves exactly one later gap month for every additional payout.
+ */
+async function assignMultipleDraw(chitId, monthIndex, memberIds, gapMonthIndexes, actingUserId) {
+  const chit = await getById(chitId);
+  const elapsed = chitMonthsElapsed(chit.start_date, chit.total_months);
+  if (monthIndex === CLUB_SLOT_INDEX) throw ApiError.badRequest('Month 2 is reserved for Jolly Friends Club.');
+  if (monthIndex !== elapsed) throw ApiError.badRequest('Multiple Draw can only be recorded for the current chit month.');
+  const uniqueMembers = [...new Set(memberIds || [])];
+  const uniqueGaps = [...new Set(gapMonthIndexes || [])].map(Number);
+  if (uniqueMembers.length < 2) throw ApiError.badRequest('Select at least two participants for a Multiple Draw.');
+  if (uniqueGaps.length !== uniqueMembers.length - 1) throw ApiError.badRequest('Select one future gap month for every additional drawer.');
+  if (uniqueGaps.some((index) => !Number.isInteger(index) || index <= monthIndex || index >= chit.total_months || index === CLUB_SLOT_INDEX)) {
+    throw ApiError.badRequest('Each gap month must be a future, normal chit month.');
+  }
+
+  const monthDataByIndex = await ensureMonthData(chit);
+  const currentMonth = monthDataByIndex.get(monthIndex);
+  if (currentMonth.drawn_by_member_id || currentMonth.shuffled) throw ApiError.badRequest('This month already has a drawer result.');
+  const participants = await getParticipants(chitId);
+  if (uniqueMembers.some((memberId) => !participants.some((participant) => participant.member_id === memberId))) {
+    throw ApiError.badRequest('Every selected drawer must be an active participant of this chit.');
+  }
+
+  const { rows: priorDraws } = await query(
+    `SELECT drawn_by_member_id AS member_id FROM chit_month_data WHERE chit_id = $1 AND drawn_by_member_id IS NOT NULL
+     UNION SELECT member_id FROM chit_multiple_draws WHERE chit_id = $1`,
+    [chitId]
+  );
+  const priorDrawerIds = new Set(priorDraws.map((row) => row.member_id));
+  if (uniqueMembers.some((memberId) => priorDrawerIds.has(memberId))) {
+    throw ApiError.badRequest('A selected participant has already received a draw in this chit.');
+  }
+  const { rows: gaps } = await query('SELECT month_index FROM chit_gap_months WHERE chit_id = $1', [chitId]);
+  const existingGaps = new Set(gaps.map((gap) => gap.month_index));
+  if (uniqueGaps.some((index) => existingGaps.has(index) || monthDataByIndex.get(index).drawn_by_member_id)) {
+    throw ApiError.badRequest('A selected gap month already has a draw or is reserved as a gap month.');
+  }
+
+  const payout = chitPayoutForRound(chit, monthIndex);
+  await withTransaction(async (client) => {
+    await client.query('UPDATE chit_month_data SET drawn_by_member_id = $1, shuffled = FALSE WHERE id = $2', [uniqueMembers[0], currentMonth.id]);
+    for (const memberId of uniqueMembers) {
+      await client.query(
+        `INSERT INTO chit_multiple_draws (chit_id, source_month_index, member_id, payout_amount, created_by_id)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [chitId, monthIndex, memberId, payout, actingUserId]
+      );
+    }
+    for (const gapMonthIndex of uniqueGaps) {
+      await client.query(
+        `INSERT INTO chit_gap_months (chit_id, month_index, source_month_index, created_by_id)
+         VALUES ($1,$2,$3,$4)`,
+        [chitId, gapMonthIndex, monthIndex, actingUserId]
+      );
+    }
+  });
+  return { drawerCount: uniqueMembers.length, gapMonthIndexes: uniqueGaps, payoutPerDrawer: payout };
 }
 
 /**
@@ -921,6 +1020,7 @@ module.exports = {
   payForMonth,
   markAllPaidForMonth,
   assignDraw,
+  assignMultipleDraw,
   recallDraw,
   submitRequest,
   cancelRequest,
