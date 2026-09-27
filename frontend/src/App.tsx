@@ -14,6 +14,7 @@ import DocumentsPage from './pages/DocumentsPage';
 import ReportsPage from './pages/ReportsPage';
 import CalculatorPage from './pages/CalculatorPage';
 import ProfilePage from './pages/ProfilePage';
+import ActivityLogPage from './pages/ActivityLogPage';
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
             <Route path="reports" element={<ReportsPage />} />
             <Route path="calculator" element={<CalculatorPage />} />
             <Route path="profile" element={<ProfilePage />} />
+            <Route path="activity-log" element={<ActivityLogPage />} />
           </Route>
         </Routes>
       </AuthProvider>

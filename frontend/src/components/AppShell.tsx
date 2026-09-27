@@ -55,6 +55,11 @@ const ICONS: Record<string, ReactElement> = {
       <circle cx="8.3" cy="18" r="0.9" fill="currentColor" stroke="none" /><rect x="11" y="17" width="5.6" height="1.9" rx="0.9" fill="currentColor" stroke="none" />
     </svg>
   ),
+  activity: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 18V6" /><path d="M4 18h16" /><path d="M7 15l3-4 3 2 5-7" /><circle cx="18" cy="6" r="1" />
+    </svg>
+  ),
   profile: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="9.25" /><circle cx="12" cy="10" r="3.2" /><path d="M5.5 19a7 7 0 0 1 13 0" />
@@ -80,6 +85,7 @@ export default function AppShell() {
     { to: '/documents', key: 'documents', label: 'Documents' },
     { to: '/reports', key: 'reports', label: 'Reports' },
     { to: '/calculator', key: 'calculator', label: 'Chit Calculator' },
+    ...(isAdmin ? [{ to: '/activity-log', key: 'activity', label: 'Activity Log' }] : []),
     { to: '/profile', key: 'profile', label: isAdmin ? 'Admin Profile' : 'My Profile' },
   ];
 
@@ -96,6 +102,7 @@ export default function AppShell() {
     '/reports': 'Reports',
     '/calculator': 'Chit Calculator',
     '/profile': isAdmin ? 'Admin Profile' : 'My Profile',
+    '/activity-log': 'User Activity Log',
   };
   const currentPath = location.pathname.startsWith('/chits/') ? '/chits' : location.pathname;
   const pageTitle = PAGE_TITLES[currentPath] || 'Overview';
