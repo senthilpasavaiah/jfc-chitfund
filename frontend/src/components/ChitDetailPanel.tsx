@@ -47,6 +47,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   const [changingDrawer, setChangingDrawer] = useState(false);
   const [changeDrawerId, setChangeDrawerId] = useState('');
   const [changingDrawerSaving, setChangingDrawerSaving] = useState(false);
+  const [selectedProofSlots, setSelectedProofSlots] = useState<string[]>([]);
 
   // Tracks whether we've already auto-picked "the current month" for THIS
   // chit id. Previously the auto-pick logic ran on every loadChit() call
@@ -103,6 +104,12 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     setSuccessMessage(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth, chit?.id]);
+
+  useEffect(() => {
+    if (isAdmin || !monthDetail) return;
+    const mine = monthDetail.participants.filter((p) => p.memberId === user?.memberId && !p.paymentExempt && !p.paid);
+    setSelectedProofSlots(mine.length === 1 ? [mine[0].chitMemberId] : []);
+  }, [monthDetail, isAdmin, user?.memberId]);
 
   async function loadLedger() {
     const res = await client.get(`/chits/${id}/ledger`);
@@ -280,7 +287,11 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     }
   }
 
-  async function handleUploadProof(file: File) {
+  async function handleUploadProof(file: File, chitMemberIds: string[]) {
+    if (!chitMemberIds.length) {
+      setError('Select at least one contribution before uploading the payment proof.');
+      return;
+    }
     setError(null);
     setUploading(true);
     try {
@@ -292,7 +303,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
       });
       const [meta, base64] = dataUrl.split(',');
       const mimeType = meta.match(/data:(.*);base64/)?.[1] || file.type;
-      await client.post(`/chits/${id}/months/${selectedMonth}/payment-proof`, { imageData: base64, imageMimeType: mimeType });
+      await client.post(`/chits/${id}/months/${selectedMonth}/payment-proof`, { imageData: base64, imageMimeType: mimeType, chitMemberIds });
       loadMonth(selectedMonth);
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Could not upload payment proof.');
@@ -639,18 +650,44 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
             <p className="text-sm text-danger">Your last submission was rejected. Please upload a new screenshot.</p>
           )}
           {(!myProofStatus || myProofStatus.status === 'rejected') && (
-            <div>
-              <label className="inline-block rounded-lg bg-navy text-white px-4 py-2 text-sm font-medium cursor-pointer hover:bg-navy-light transition-colors">
-                {uploading ? 'Uploading…' : '📤 Upload Payment Screenshot'}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  disabled={uploading}
-                  onChange={(e) => e.target.files?.[0] && handleUploadProof(e.target.files[0])}
-                />
-              </label>
-              <p className="text-xs text-ink-muted mt-1.5">Upload your bank transfer / UPI / SMS screenshot — an admin will verify and confirm it.</p>
+            <div className="space-y-2">
+              {(() => {
+                const mine = monthDetail.participants.filter((p) => p.memberId === user?.memberId && !p.paymentExempt && !p.paid);
+                return (
+                  <>
+                    {mine.length > 1 && (
+                      <div className="rounded-lg border border-line bg-paper p-3 space-y-2">
+                        <div className="text-xs font-semibold">Select the contribution(s) you are paying</div>
+                        {mine.map((p) => (
+                          <label key={p.chitMemberId} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedProofSlots.includes(p.chitMemberId)}
+                              onChange={() => setSelectedProofSlots((current) => current.includes(p.chitMemberId)
+                                ? current.filter((id) => id !== p.chitMemberId)
+                                : [...current, p.chitMemberId])}
+                            />
+                            <span>Contribution {p.slotNumber ?? '-'}</span>
+                            <span className="text-ink-muted">— {formatINR(monthDetail.monthlyPayment)}</span>
+                          </label>
+                        ))}
+                        <button type="button" className="text-xs text-navy underline cursor-pointer" onClick={() => setSelectedProofSlots(mine.map((p) => p.chitMemberId))}>Select all contributions</button>
+                      </div>
+                    )}
+                    <label className={`inline-block rounded-lg bg-navy text-white px-4 py-2 text-sm font-medium cursor-pointer hover:bg-navy-light transition-colors ${!selectedProofSlots.length || uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                      {uploading ? 'Uploading…' : '📤 Upload Payment Screenshot'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={uploading || !selectedProofSlots.length}
+                        onChange={(e) => e.target.files?.[0] && handleUploadProof(e.target.files[0], selectedProofSlots)}
+                      />
+                    </label>
+                    <p className="text-xs text-ink-muted mt-1.5">Upload your bank transfer / UPI / SMS screenshot — an admin will verify and confirm only the selected contribution(s).</p>
+                  </>
+                );
+              })()}
             </div>
           )}
 
