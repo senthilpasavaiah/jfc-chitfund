@@ -27,6 +27,7 @@ async function getOrCreateMonthData(chitId, monthIndex) {
  */
 async function submitProof({ chitId, monthIndex, memberId, imageData, imageMimeType, submittedById, autoConfirm = false }) {
   if (!imageData) throw ApiError.badRequest('No image was provided.');
+  await chitService.assertPaymentRequiredForMonth(chitId, monthIndex, memberId);
   const approxBytes = (imageData.length * 3) / 4;
   if (approxBytes > MAX_IMAGE_BYTES) {
     throw ApiError.badRequest('That image is too large. Please upload a screenshot under 6MB.');
