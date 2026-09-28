@@ -112,6 +112,17 @@ async function listPending(memberId, chitId, monthIndex) {
 module.exports = { ACTIONS, getPendingContributions, recordAction, listPending };
 
 
+async function getOpenPaidActions(memberId) {
+  const { rows } = await query(
+    `SELECT *
+     FROM whatsapp_payment_actions
+     WHERE member_id = $1 AND action = 'PAID' AND status = 'OPEN'
+     ORDER BY created_at DESC`,
+    [memberId]
+  );
+  return rows;
+}
+
 async function getLatestOpenPaidAction(memberId, chitId = null, monthIndex = null) {
   const { rows } = await query(
     `SELECT *
@@ -140,4 +151,5 @@ async function updateActionMetadata(actionId, patch, status = null) {
 }
 
 module.exports.getLatestOpenPaidAction = getLatestOpenPaidAction;
+module.exports.getOpenPaidActions = getOpenPaidActions;
 module.exports.updateActionMetadata = updateActionMetadata;
