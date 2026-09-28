@@ -6,11 +6,20 @@ const ACTIONS = ['NOT_YET', 'WILL_PAY', 'PAY_LATER', 'PAID', 'SELECT_CONTRIBUTIO
 
 async function getPendingContributions(memberId, chitId, monthIndex) {
   const { rows: monthRows } = await query(
-    `SELECT id FROM chit_month_data WHERE chit_id = $1 AND month_index = $2 LIMIT 1`,
+    `SELECT id, drawn_by_member_id
+     FROM chit_month_data
+     WHERE chit_id = $1 AND month_index = $2
+     LIMIT 1`,
     [chitId, monthIndex]
   );
   const monthData = monthRows[0];
   if (!monthData) throw ApiError.notFound('Chit month not found.');
+
+  // Drawer receives the monthly pot and is never payment-obligated for this month.
+  // Enforce this at the service layer so direct API/WhatsApp calls cannot bypass the UI.
+  if (monthData.drawn_by_member_id === memberId) {
+    return { monthDataId: monthData.id, contributions: [] };
+  }
 
   const { rows: chitRows } = await query('SELECT * FROM chits WHERE id = $1 LIMIT 1', [chitId]);
   const chit = chitRows[0];
@@ -60,6 +69,9 @@ async function recordAction({
   if (!ACTIONS.includes(action)) throw ApiError.badRequest('Invalid WhatsApp payment action.');
 
   const pending = await getPendingContributions(memberId, chitId, monthIndex);
+  if (!pending.contributions.length) {
+    throw ApiError.badRequest('No pending payment contribution exists for this member and chit month.');
+  }
   const requested = [...new Set((Array.isArray(chitMemberIds) ? chitMemberIds : []).filter(Boolean))];
 
   if (action === 'PAID' && amount == null) {
