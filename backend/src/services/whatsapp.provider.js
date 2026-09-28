@@ -133,4 +133,30 @@ async function sendText({ to, body }) {
   return { enabled: true, sent: true, providerMessageId: payload?.messages?.[0]?.id || null };
 }
 
+async function downloadMedia(mediaId) {
+  const config = getConfig();
+  if (!isEnabled()) throw new Error('WhatsApp is disabled.');
+  if (!config.accessToken || !mediaId) throw new Error('WhatsApp media access is not configured.');
+  const metaResponse = await fetch(`${GRAPH_BASE}/${META_GRAPH_VERSION}/${mediaId}`, {
+    headers: { Authorization: `Bearer ${config.accessToken}` },
+  });
+  const meta = await metaResponse.json().catch(() => ({}));
+  if (!metaResponse.ok || !meta?.url) {
+    throw new Error(meta?.error?.message || `WhatsApp media lookup failed with HTTP ${metaResponse.status}`);
+  }
+  const mediaResponse = await fetch(meta.url, {
+    headers: { Authorization: `Bearer ${config.accessToken}` },
+  });
+  if (!mediaResponse.ok) {
+    throw new Error(`WhatsApp media download failed with HTTP ${mediaResponse.status}`);
+  }
+  const buffer = Buffer.from(await mediaResponse.arrayBuffer());
+  return {
+    imageData: buffer.toString('base64'),
+    imageMimeType: meta.mime_type || mediaResponse.headers.get('content-type') || 'image/jpeg',
+    sha256: meta.sha256 || null,
+  };
+}
+
 module.exports.sendText = sendText;
+module.exports.downloadMedia = downloadMedia;
