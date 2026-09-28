@@ -982,7 +982,6 @@ async function getConfirmedChitCollections({ from, to } = {}) {
 
 module.exports = {
   chitMonthlyPaymentForRound,
-  chitMonthlyPaymentForRound,
   getConfirmedChitCollections,
   updateRefNumber,
   syncAccounting,
