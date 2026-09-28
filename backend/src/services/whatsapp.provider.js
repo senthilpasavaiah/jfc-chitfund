@@ -1,8 +1,14 @@
-const META_GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || 'v23.0';
+const META_GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || '';
 const GRAPH_BASE = 'https://graph.facebook.com';
 
 function isEnabled() {
   return String(process.env.WHATSAPP_ENABLED || '').toLowerCase() === 'true';
+}
+
+function assertGraphVersion() {
+  if (!META_GRAPH_VERSION) {
+    throw new Error('WhatsApp is enabled but WHATSAPP_GRAPH_VERSION is missing. Configure a currently supported Meta Graph API version before enabling delivery.');
+  }
 }
 
 function getConfig() {
@@ -21,6 +27,7 @@ function normalisePhone(value) {
 
 async function sendTemplate({ to, templateName, languageCode, bodyParameters = [] }) {
   const config = getConfig();
+  assertGraphVersion();
   if (!config.accessToken || !config.phoneNumberId) {
     throw new Error('WhatsApp is enabled but WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID is missing.');
   }
@@ -117,6 +124,8 @@ module.exports = { isEnabled, sendNotification, sendTemplate };
 async function sendText({ to, body }) {
   const config = getConfig();
   if (!isEnabled()) return { enabled: false, sent: false };
+  assertGraphVersion();
+  assertGraphVersion();
   if (!config.accessToken || !config.phoneNumberId) {
     throw new Error('WhatsApp is enabled but WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID is missing.');
   }
@@ -149,6 +158,7 @@ async function sendText({ to, body }) {
 async function downloadMedia(mediaId) {
   const config = getConfig();
   if (!isEnabled()) throw new Error('WhatsApp is disabled.');
+  assertGraphVersion();
   if (!config.accessToken || !mediaId) throw new Error('WhatsApp media access is not configured.');
   const metaResponse = await fetch(`${GRAPH_BASE}/${META_GRAPH_VERSION}/${mediaId}`, {
     headers: { Authorization: `Bearer ${config.accessToken}` },
