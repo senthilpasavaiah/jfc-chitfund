@@ -99,3 +99,38 @@ async function sendNotification({ member, type, subject, body }) {
 }
 
 module.exports = { isEnabled, sendNotification, sendTemplate };
+
+
+async function sendText({ to, body }) {
+  const config = getConfig();
+  if (!isEnabled()) return { enabled: false, sent: false };
+  if (!config.accessToken || !config.phoneNumberId) {
+    throw new Error('WhatsApp is enabled but WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID is missing.');
+  }
+  const recipient = normalisePhone(to);
+  if (!recipient) throw new Error('Recipient does not have a valid WhatsApp number.');
+  const response = await fetch(
+    `${GRAPH_BASE}/${META_GRAPH_VERSION}/${config.phoneNumberId}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: recipient,
+        type: 'text',
+        text: { body },
+      }),
+    }
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = payload?.error?.message || `WhatsApp API returned HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return { enabled: true, sent: true, providerMessageId: payload?.messages?.[0]?.id || null };
+}
+
+module.exports.sendText = sendText;
