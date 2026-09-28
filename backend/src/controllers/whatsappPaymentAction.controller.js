@@ -2,7 +2,12 @@ const whatsappPaymentActionService = require('../services/whatsappPaymentAction.
 
 async function record(req, res, next) {
   try {
-    const memberId = req.body.memberId || req.user.memberId;
+    const requestedMemberId = req.body.memberId;
+    const canActForAnotherMember = req.user.role === 'ADMIN' || req.user.role === 'MANAGER';
+    if (requestedMemberId && requestedMemberId !== req.user.memberId && !canActForAnotherMember) {
+      return res.status(403).json({ success: false, message: 'You can only submit WhatsApp payment actions for your own account.' });
+    }
+    const memberId = requestedMemberId || req.user.memberId;
     const result = await whatsappPaymentActionService.recordAction({
       memberId,
       chitId: req.body.chitId,
@@ -21,7 +26,12 @@ async function record(req, res, next) {
 
 async function pending(req, res, next) {
   try {
-    const memberId = req.query.memberId || req.user.memberId;
+    const requestedMemberId = req.query.memberId;
+    const canViewAnotherMember = req.user.role === 'ADMIN' || req.user.role === 'MANAGER';
+    if (requestedMemberId && requestedMemberId !== req.user.memberId && !canViewAnotherMember) {
+      return res.status(403).json({ success: false, message: 'You can only view your own pending WhatsApp payments.' });
+    }
+    const memberId = requestedMemberId || req.user.memberId;
     const result = await whatsappPaymentActionService.listPending(
       memberId,
       req.query.chitId,
