@@ -59,7 +59,7 @@ async function getOrCreateMonthData(chitId, monthIndex) {
  * already confirmed - a rejected proof CAN be resubmitted (overwrites in
  * place, resets to pending).
  */
-async function submitProof({ chitId, monthIndex, memberId, chitMemberIds = [], imageData, imageMimeType, submittedById, autoConfirm = false }) {
+async function submitProof({ chitId, monthIndex, memberId, chitMemberIds = [], imageData, imageMimeType, submittedById, autoConfirm = false, utrNumber = null, declaredAmount = null }) {
   if (!imageData) throw ApiError.badRequest('No image was provided.');
   await chitService.assertPaymentRequiredForMonth(chitId, monthIndex, memberId);
   const requestedSlotIds = [...new Set((Array.isArray(chitMemberIds) ? chitMemberIds : []).filter(Boolean))];
@@ -105,16 +105,16 @@ async function submitProof({ chitId, monthIndex, memberId, chitMemberIds = [], i
       `UPDATE chit_payment_proofs
        SET image_data = $1, image_mime_type = $2, status = $3, submitted_by_id = $4,
            reviewed_by_id = $5, reviewed_at = $6, rejection_reason = NULL,
-           chit_member_ids = $7, created_at = now()
+           chit_member_ids = $7, utr_number = $8, declared_amount = $9, created_at = now()
        WHERE id = $8 RETURNING *`,
-      [imageData, imageMimeType, status, submittedById, autoConfirm ? submittedById : null, autoConfirm ? new Date() : null, selectedSlotIds, existing.id]
+      [imageData, imageMimeType, status, submittedById, autoConfirm ? submittedById : null, autoConfirm ? new Date() : null, selectedSlotIds, utrNumber || null, declaredAmount == null ? null : Number(declaredAmount), existing.id]
     );
     proof = rows[0];
   } else {
     const { rows } = await query(
-      `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, chit_member_ids, image_data, image_mime_type, submitted_by_id, status, reviewed_by_id, reviewed_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [monthData.id, memberId, selectedSlotIds, imageData, imageMimeType, submittedById, status, autoConfirm ? submittedById : null, autoConfirm ? new Date() : null]
+      `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, chit_member_ids, image_data, image_mime_type, submitted_by_id, status, reviewed_by_id, reviewed_at, utr_number, declared_amount)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [monthData.id, memberId, selectedSlotIds, imageData, imageMimeType, submittedById, status, autoConfirm ? submittedById : null, autoConfirm ? new Date() : null, utrNumber || null, declaredAmount == null ? null : Number(declaredAmount)]
     );
     proof = rows[0];
   }
@@ -143,7 +143,7 @@ async function submitProof({ chitId, monthIndex, memberId, chitMemberIds = [], i
 }
 
 /** Admin marks a member paid without any screenshot at all - a plain manual entry. */
-async function markPaidManually(chitId, monthIndex, memberId, adminUserId, chitMemberIds = []) {
+async function markPaidManually(chitId, monthIndex, memberId, adminUserId, chitMemberIds = [], declaredAmount = null) {
   const requested = [...new Set((Array.isArray(chitMemberIds) ? chitMemberIds : []).filter(Boolean))];
   const participants = await query(
     `SELECT id FROM chit_members WHERE chit_id = $1 AND member_id = $2 AND is_active = TRUE ORDER BY slot_number`,
@@ -161,9 +161,9 @@ async function markPaidManually(chitId, monthIndex, memberId, adminUserId, chitM
   // would (status confirmed, but with no image) - keeps the history clean.
   await query(
     `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, chit_member_ids, image_data, image_mime_type, submitted_by_id, status, reviewed_by_id, reviewed_at)
-     VALUES ($1,$2,$4,'','application/x-manual-entry',$3,'confirmed',$3,now())
-     ON CONFLICT (chit_month_data_id, member_id) DO UPDATE SET status = 'confirmed', reviewed_by_id = $3, reviewed_at = now(), chit_member_ids = $4`,
-    [monthData.id, memberId, adminUserId, selected]
+     VALUES ($1,$2,$4,'','application/x-manual-entry',$3,'confirmed',$3,now(),$5)
+     ON CONFLICT (chit_month_data_id, member_id) DO UPDATE SET status = 'confirmed', reviewed_by_id = $3, reviewed_at = now(), chit_member_ids = $4, declared_amount = $5`,
+    [monthData.id, memberId, adminUserId, selected, declaredAmount == null ? null : Number(declaredAmount)]
   );
 }
 
