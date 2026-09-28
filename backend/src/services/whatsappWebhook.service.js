@@ -19,7 +19,7 @@ async function findMemberByWhatsApp(waId) {
   const normalized = normalisePhone(waId);
   if (!normalized) return null;
   const { rows } = await query(
-    "SELECT id, name, mobile_number, whatsapp_number FROM members WHERE regexp_replace(COALESCE(whatsapp_number, mobile_number, ''), '[^0-9]', '', 'g') = $1 LIMIT 1",
+    "SELECT id, user_id, name, mobile_number, whatsapp_number FROM members WHERE regexp_replace(COALESCE(whatsapp_number, mobile_number, ''), '[^0-9]', '', 'g') = $1 LIMIT 1",
     [normalized]
   );
   return rows[0] || null;
@@ -68,7 +68,7 @@ async function handleMessage(message) {
       chitMemberIds: selectedIds,
       imageData: media.imageData,
       imageMimeType: media.imageMimeType,
-      submittedById: member.id,
+      submittedById: member.user_id,
       autoConfirm: false,
       declaredAmount,
     });
