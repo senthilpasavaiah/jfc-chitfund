@@ -62,6 +62,11 @@ async function recordAction({
   const pending = await getPendingContributions(memberId, chitId, monthIndex);
   const requested = [...new Set((Array.isArray(chitMemberIds) ? chitMemberIds : []).filter(Boolean))];
 
+  if (action === 'PAID' && amount == null) {
+    const selected = pending.contributions.filter((item) => requested.includes(item.chitMemberId));
+    amount = selected.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  }
+
   if (action === 'PAID' || action === 'SELECT_CONTRIBUTIONS') {
     if (!requested.length) {
       throw ApiError.badRequest('Select the contribution(s) covered by this payment.');
