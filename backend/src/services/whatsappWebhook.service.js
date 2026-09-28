@@ -85,7 +85,7 @@ async function handleMessage(message) {
     return { handled: true, action: 'RECEIPT_SUBMITTED', proofId: proof.id };
   }
 
-  const utrMatch = String(parsed.actionId || '').match(/^UTR[:\\s-]+(.+)$/i);
+  const utrMatch = String(parsed.actionId || '').match(/^UTR[:\s-]+(.+)$/i);
   if (utrMatch && openPaid) {
     const utr = utrMatch[1].trim().slice(0, 100);
     const proof = await paymentProofService.attachUtrToPendingProof(member.id, openPaid.chit_id, openPaid.month_index, utr);
