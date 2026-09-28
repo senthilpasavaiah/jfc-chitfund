@@ -86,6 +86,9 @@ async function submitProof({ chitId, monthIndex, memberId, chitMemberIds = [], i
      ORDER BY slot_number`,
     [chitId, memberId]
   );
+  if (!requestedSlotIds.length && participants.rows.length > 1) {
+    throw ApiError.badRequest('This member has multiple contributions in this chit. Select the exact contribution(s) being paid.');
+  }
   const selectedSlots = requestedSlotIds.length
     ? participants.rows.filter((p) => requestedSlotIds.includes(p.id))
     : participants.rows;
