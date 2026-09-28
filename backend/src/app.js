@@ -24,6 +24,7 @@ const fundRoutes = require('./routes/fund.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const documentRoutes = require('./routes/document.routes');
 const whatsappPaymentActionRoutes = require('./routes/whatsappPaymentAction.routes');
+const whatsappWebhookRoutes = require('./routes/whatsappWebhook.routes');
 
 const app = express();
 
@@ -41,7 +42,7 @@ app.use(
 // files - scanned bylaws/registration PDFs - inflate to ~13.3MB as
 // base64); payment-proof screenshots (capped at 6MB raw) fit comfortably
 // under this too.
-app.use(express.json({ limit: '15mb' }));
+app.use(express.json({ limit: '15mb', verify: (req, _res, buf) => { req.rawBody = Buffer.from(buf); } }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.use(cookieParser());
 app.use(compression());
@@ -93,6 +94,7 @@ app.use('/api/funds', fundRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/whatsapp/payment-actions', whatsappPaymentActionRoutes);
+app.use('/api/whatsapp', whatsappWebhookRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
