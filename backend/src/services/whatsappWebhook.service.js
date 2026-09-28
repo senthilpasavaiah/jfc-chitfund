@@ -109,7 +109,16 @@ async function handleMessage(message) {
     return { handled: true, action: parsedAction.drawerAction === 'CONFIRM' ? 'DRAWER_CONFIRM' : 'DRAWER_DECLINE', result: updatedRows[0] || confirmation };
   }
 
-  const openPaid = await whatsappPaymentActionService.getLatestOpenPaidAction(member.id);
+  const openPaidActions = await whatsappPaymentActionService.getOpenPaidActions(member.id);
+  const openPaid = openPaidActions.length === 1 ? openPaidActions[0] : null;
+
+  if ((parsed.image || /^UTR[:\\s-]+(.+)$/i.test(String(parsed.actionId || ''))) && openPaidActions.length > 1) {
+    await whatsappProvider.sendText({
+      to: member.whatsapp_number || member.mobile_number,
+      body: 'You have more than one WhatsApp payment confirmation awaiting receipt details. Please use the payment action for the correct chit/month before sending the receipt or UTR.'
+    });
+    return { handled: true, action: 'PAYMENT_CONTEXT_REQUIRED' };
+  }
 
   if (parsed.image && openPaid) {
     const selectedIds = Array.isArray(openPaid.chit_member_ids) ? openPaid.chit_member_ids : [];
