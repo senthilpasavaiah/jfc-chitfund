@@ -10,6 +10,7 @@ function getConfig() {
     accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
     reminderTemplate: process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE || '',
+    drawerPaymentTemplate: process.env.WHATSAPP_DRAWER_PAYMENT_TEMPLATE || '',
     templateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'en_US',
   };
 }
@@ -92,8 +93,20 @@ async function sendNotification({ member, type, subject, body }) {
     return { enabled: true, sent: true, providerMessageId: result?.messages?.[0]?.id || null };
   }
 
-  // Deliberately do not send other automated types yet. This prevents
-  // accidental free-form/proactive messages before their approved templates
+  if (type === 'PAYMENT_RECEIVED') {
+    if (!config.drawerPaymentTemplate) {
+      throw new Error('WHATSAPP_DRAWER_PAYMENT_TEMPLATE is not configured.');
+    }
+    const result = await sendTemplate({
+      to,
+      templateName: config.drawerPaymentTemplate,
+      languageCode: config.templateLanguage,
+      bodyParameters: [member.name || '', subject || '', body || ''],
+    });
+    return { enabled: true, sent: true, providerMessageId: result?.messages?.[0]?.id || null };
+  }
+
+  // Deliberately defer other automated types until their approved templates
   // and interactive flows are configured.
   return { enabled: true, sent: false, deferred: true };
 }
