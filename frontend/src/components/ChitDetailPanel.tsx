@@ -35,7 +35,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   const [error, setError] = useState<string | null>(null);
   const [shuffling, setShuffling] = useState(false);
   const [shuffleResult, setShuffleResult] = useState<{ winnerName: string } | null>(null);
-  const [myProofStatus, setMyProofStatus] = useState<{ status: string } | null>(null);
+  const [myProofStatus, setMyProofStatus] = useState<{ status: string; chit_member_ids?: string[] } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [pendingProofs, setPendingProofs] = useState<PendingProof[]>([]);
   const [markingMemberId, setMarkingMemberId] = useState<string | null>(null);
@@ -649,7 +649,18 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
           {myProofStatus?.status === 'rejected' && (
             <p className="text-sm text-danger">Your last submission was rejected. Please upload a new screenshot.</p>
           )}
-          {(!myProofStatus || myProofStatus.status === 'rejected') && (
+          {(() => {
+            const myPendingContributions = monthDetail.participants.filter(
+              (p) => p.memberId === user?.memberId && !p.paymentExempt && !p.paid
+            );
+            const proofSlots = Array.isArray(myProofStatus?.chit_member_ids) ? myProofStatus.chit_member_ids : [];
+            const proofStillCoversPending = proofSlots.some((slotId) =>
+              myPendingContributions.some((p) => p.chitMemberId === slotId)
+            );
+            const canUploadProof = !myProofStatus ||
+              myProofStatus.status === 'rejected' ||
+              (myProofStatus.status === 'confirmed' && myPendingContributions.length > 0 && !proofStillCoversPending);
+            return canUploadProof && (
             <div className="space-y-2">
               {(() => {
                 const mine = monthDetail.participants.filter((p) => p.memberId === user?.memberId && !p.paymentExempt && !p.paid);
@@ -689,7 +700,8 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                 );
               })()}
             </div>
-          )}
+            );
+          })()}
 
           {/* Once a month's winner is already decided, requesting it no longer makes sense. */}
           {!monthDetail.isClub && !monthDetail.drawnByMemberId && (
