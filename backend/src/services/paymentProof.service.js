@@ -29,12 +29,20 @@ async function notifyDrawerOfPayment(chitId, monthIndex, memberId, createdById, 
   );
   if (existing.length) return;
 
+  const { rows: contributionRows } = chitMemberIds.length ? await query(
+    `SELECT slot_number FROM chit_members WHERE id = ANY($1::uuid[]) ORDER BY slot_number`,
+    [chitMemberIds]
+  ) : { rows: [] };
+  const contributionLabel = contributionRows.length
+    ? contributionRows.map((item) => `Contribution ${item.slot_number}`).join(', ')
+    : 'legacy member-level payment';
+
   await notificationService.dispatch({
     memberId: row.drawn_by_member_id,
     channel: 'WHATSAPP',
     type: 'PAYMENT_RECEIVED',
     subject: `${row.ref_number} - Month ${monthIndex + 1} payment received`,
-    body: `${row.member_name} has paid the Month ${monthIndex + 1} installment for ${row.ref_number}. Contributions/slots: ${chitMemberIds.length ? chitMemberIds.join(', ') : 'legacy member-level payment'}. Please confirm the payment received.`,
+    body: `${row.member_name} has paid the Month ${monthIndex + 1} installment for ${row.ref_number}. ${contributionLabel}. Please confirm the payment received.`,
     createdById,
   });
 }
