@@ -5,7 +5,7 @@ const notificationService = require('./notification.service');
 
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024; // ~6MB raw, comfortably under the 8mb JSON body limit once base64-encoded
 
-async function notifyDrawerOfPayment(chitId, monthIndex, memberId, createdById) {
+async function notifyDrawerOfPayment(chitId, monthIndex, memberId, createdById, chitMemberIds = []) {
   const { rows } = await query(
     `SELECT md.drawn_by_member_id, c.ref_number, m.name AS member_name
      FROM chit_month_data md
@@ -34,7 +34,7 @@ async function notifyDrawerOfPayment(chitId, monthIndex, memberId, createdById) 
     channel: 'WHATSAPP',
     type: 'PAYMENT_RECEIVED',
     subject: `${row.ref_number} - Month ${monthIndex + 1} payment received`,
-    body: `${row.member_name} has paid the Month ${monthIndex + 1} installment for ${row.ref_number}. Please confirm the payment received.`,
+    body: `${row.member_name} has paid the Month ${monthIndex + 1} installment for ${row.ref_number}. Contributions/slots: ${chitMemberIds.length ? chitMemberIds.join(', ') : 'legacy member-level payment'}. Please confirm the payment received.`,
     createdById,
   });
 }
@@ -59,9 +59,25 @@ async function getOrCreateMonthData(chitId, monthIndex) {
  * already confirmed - a rejected proof CAN be resubmitted (overwrites in
  * place, resets to pending).
  */
-async function submitProof({ chitId, monthIndex, memberId, imageData, imageMimeType, submittedById, autoConfirm = false }) {
+async function submitProof({ chitId, monthIndex, memberId, chitMemberIds = [], imageData, imageMimeType, submittedById, autoConfirm = false }) {
   if (!imageData) throw ApiError.badRequest('No image was provided.');
   await chitService.assertPaymentRequiredForMonth(chitId, monthIndex, memberId);
+  const requestedSlotIds = [...new Set((Array.isArray(chitMemberIds) ? chitMemberIds : []).filter(Boolean))];
+  const participants = await query(
+    `SELECT id, member_id, slot_number
+     FROM chit_members
+     WHERE chit_id = $1 AND member_id = $2 AND is_active = TRUE
+     ORDER BY slot_number`,
+    [chitId, memberId]
+  );
+  const selectedSlots = requestedSlotIds.length
+    ? participants.rows.filter((p) => requestedSlotIds.includes(p.id))
+    : participants.rows;
+  if (!selectedSlots.length) throw ApiError.badRequest('Select at least one valid contribution for this payment.');
+  if (requestedSlotIds.length && selectedSlots.length !== requestedSlotIds.length) {
+    throw ApiError.badRequest('One or more selected contributions are invalid for this member.');
+  }
+  const selectedSlotIds = selectedSlots.map((p) => p.id);
   const approxBytes = (imageData.length * 3) / 4;
   if (approxBytes > MAX_IMAGE_BYTES) {
     throw ApiError.badRequest('That image is too large. Please upload a screenshot under 6MB.');
@@ -88,23 +104,26 @@ async function submitProof({ chitId, monthIndex, memberId, imageData, imageMimeT
     const { rows } = await query(
       `UPDATE chit_payment_proofs
        SET image_data = $1, image_mime_type = $2, status = $3, submitted_by_id = $4,
-           reviewed_by_id = $5, reviewed_at = $6, rejection_reason = NULL, created_at = now()
-       WHERE id = $7 RETURNING *`,
-      [imageData, imageMimeType, status, submittedById, autoConfirm ? submittedById : null, autoConfirm ? new Date() : null, existing.id]
+           reviewed_by_id = $5, reviewed_at = $6, rejection_reason = NULL,
+           chit_member_ids = $7, created_at = now()
+       WHERE id = $8 RETURNING *`,
+      [imageData, imageMimeType, status, submittedById, autoConfirm ? submittedById : null, autoConfirm ? new Date() : null, selectedSlotIds, existing.id]
     );
     proof = rows[0];
   } else {
     const { rows } = await query(
-      `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, image_data, image_mime_type, submitted_by_id, status, reviewed_by_id, reviewed_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [monthData.id, memberId, imageData, imageMimeType, submittedById, status, autoConfirm ? submittedById : null, autoConfirm ? new Date() : null]
+      `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, chit_member_ids, image_data, image_mime_type, submitted_by_id, status, reviewed_by_id, reviewed_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [monthData.id, memberId, selectedSlotIds, imageData, imageMimeType, submittedById, status, autoConfirm ? submittedById : null, autoConfirm ? new Date() : null]
     );
     proof = rows[0];
   }
 
   if (autoConfirm) {
-    await chitService.payForMonth(chitId, monthIndex, memberId);
-    await notifyDrawerOfPayment(chitId, monthIndex, memberId, submittedById);
+    for (const chitMemberId of selectedSlotIds) {
+      await chitService.payForMonth(chitId, monthIndex, memberId, chitMemberId);
+    }
+    await notifyDrawerOfPayment(chitId, monthIndex, memberId, submittedById, selectedSlotIds);
   }
 
   const { rows: memberRows } = await query('SELECT name FROM members WHERE id = $1', [memberId]);
@@ -124,9 +143,19 @@ async function submitProof({ chitId, monthIndex, memberId, imageData, imageMimeT
 }
 
 /** Admin marks a member paid without any screenshot at all - a plain manual entry. */
-async function markPaidManually(chitId, monthIndex, memberId, adminUserId) {
-  await chitService.payForMonth(chitId, monthIndex, memberId);
-  await notifyDrawerOfPayment(chitId, monthIndex, memberId, adminUserId);
+async function markPaidManually(chitId, monthIndex, memberId, adminUserId, chitMemberIds = []) {
+  const requested = [...new Set((Array.isArray(chitMemberIds) ? chitMemberIds : []).filter(Boolean))];
+  const participants = await query(
+    `SELECT id FROM chit_members WHERE chit_id = $1 AND member_id = $2 AND is_active = TRUE ORDER BY slot_number`,
+    [chitId, memberId]
+  );
+  const selected = requested.length ? participants.rows.filter((p) => requested.includes(p.id)).map((p) => p.id) : participants.rows.map((p) => p.id);
+  if (!selected.length) throw ApiError.badRequest('Select at least one valid contribution.');
+  if (requested.length && selected.length !== requested.length) throw ApiError.badRequest('One or more selected contributions are invalid.');
+  for (const chitMemberId of selected) {
+    await chitService.payForMonth(chitId, monthIndex, memberId, chitMemberId);
+  }
+  await notifyDrawerOfPayment(chitId, monthIndex, memberId, adminUserId, selected);
   const { monthData } = await getOrCreateMonthData(chitId, monthIndex);
   // Record a lightweight audit row so this shows up the same way a proof
   // would (status confirmed, but with no image) - keeps the history clean.
@@ -151,8 +180,15 @@ async function reviewProof(proofId, { decision, reviewerUserId, rejectionReason 
     );
     const { rows: mdRows } = await query('SELECT chit_id, month_index FROM chit_month_data WHERE id = $1', [proof.chit_month_data_id]);
     const { chit_id: chitId, month_index: monthIndex } = mdRows[0];
-    await chitService.payForMonth(chitId, monthIndex, proof.member_id);
-    await notifyDrawerOfPayment(chitId, monthIndex, proof.member_id, reviewerUserId);
+    const selectedIds = Array.isArray(proof.chit_member_ids) && proof.chit_member_ids.length ? proof.chit_member_ids : [];
+    if (selectedIds.length) {
+      for (const chitMemberId of selectedIds) {
+        await chitService.payForMonth(chitId, monthIndex, proof.member_id, chitMemberId);
+      }
+    } else {
+      await chitService.payForMonth(chitId, monthIndex, proof.member_id);
+    }
+    await notifyDrawerOfPayment(chitId, monthIndex, proof.member_id, reviewerUserId, selectedIds);
   } else if (decision === 'reject') {
     await query(
       `UPDATE chit_payment_proofs SET status = 'rejected', reviewed_by_id = $1, reviewed_at = now(), rejection_reason = $2 WHERE id = $3`,
