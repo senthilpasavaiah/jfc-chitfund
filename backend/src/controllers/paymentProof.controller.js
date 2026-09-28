@@ -16,13 +16,15 @@ async function submit(req, res) {
     imageMimeType: req.body.imageMimeType,
     submittedById: req.user.id,
     autoConfirm: isAdminSubmitting,
+    utrNumber: req.body.utrNumber,
+    declaredAmount: req.body.declaredAmount,
   });
   await recordAudit({ userId: req.user.id, action: 'PAYMENT_PROOF_SUBMIT', entityType: 'ChitPaymentProof', entityId: proof.id, ipAddress: req.ip });
   res.status(201).json({ success: true, data: { id: proof.id, status: proof.status, createdAt: proof.created_at } });
 }
 
 async function markManual(req, res) {
-  await paymentProofService.markPaidManually(req.params.id, Number(req.params.monthIndex), req.body.memberId, req.user.id, req.body.chitMemberIds);
+  await paymentProofService.markPaidManually(req.params.id, Number(req.params.monthIndex), req.body.memberId, req.user.id, req.body.chitMemberIds, req.body.declaredAmount);
   await recordAudit({ userId: req.user.id, action: 'PAYMENT_MARK_MANUAL', entityType: 'Chit', entityId: req.params.id, metadata: { monthIndex: req.params.monthIndex, memberId: req.body.memberId }, ipAddress: req.ip });
   res.json({ success: true, message: 'Marked as paid (manual entry, no screenshot).' });
 }
