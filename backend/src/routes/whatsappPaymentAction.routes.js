@@ -23,6 +23,7 @@ router.post(
     body('chitId').isUUID(),
     body('monthIndex').isInt({ min: 0 }),
     body('action').isIn(['NOT_YET', 'WILL_PAY', 'PAY_LATER', 'PAID', 'SELECT_CONTRIBUTIONS']),
+    body('memberId').optional().isUUID(),
     body('chitMemberIds').optional().isArray(),
     body('amount').optional().isFloat({ min: 0 }),
     body('providerMessageId').optional().isString(),
