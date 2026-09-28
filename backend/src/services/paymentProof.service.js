@@ -261,4 +261,30 @@ async function getForMonth(chitId, monthIndex, memberId) {
   return rows[0] || null;
 }
 
-module.exports = { submitProof, markPaidManually, reviewProof, listPending, getProofImage, getForMonth };
+async function attachUtrToPendingProof(memberId, chitId, monthIndex, utrNumber) {
+  const { rows } = await query(
+    `SELECT p.id
+     FROM chit_payment_proofs p
+     JOIN chit_month_data md ON md.id = p.chit_month_data_id
+     WHERE p.member_id = $1 AND md.chit_id = $2 AND md.month_index = $3 AND p.status = 'pending'
+     ORDER BY p.created_at DESC
+     LIMIT 1`,
+    [memberId, chitId, monthIndex]
+  );
+  if (!rows[0]) return null;
+  const { rows: updated } = await query(
+    `UPDATE chit_payment_proofs SET utr_number = $1 WHERE id = $2 RETURNING *`,
+    [utrNumber, rows[0].id]
+  );
+  return updated[0] || null;
+}
+
+module.exports = {
+  submitProof,
+  markPaidManually,
+  reviewProof,
+  listPending,
+  getProofImage,
+  getForMonth,
+  attachUtrToPendingProof,
+};
