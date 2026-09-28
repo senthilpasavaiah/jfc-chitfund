@@ -125,7 +125,6 @@ async function sendText({ to, body }) {
   const config = getConfig();
   if (!isEnabled()) return { enabled: false, sent: false };
   assertGraphVersion();
-  assertGraphVersion();
   if (!config.accessToken || !config.phoneNumberId) {
     throw new Error('WhatsApp is enabled but WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID is missing.');
   }
