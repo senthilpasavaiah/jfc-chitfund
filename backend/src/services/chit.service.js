@@ -346,7 +346,7 @@ async function getMonthTimeline(chit) {
     const isClub = i === CLUB_SLOT_INDEX;
 
     const paymentsResult = await query(
-      SELECT p.member_id, p.chit_member_id, p.paid
+      `SELECT p.member_id, p.chit_member_id, p.paid
        FROM chit_month_payments p
        LEFT JOIN chit_members cm ON cm.id = p.chit_member_id
        WHERE p.chit_month_data_id = $1
@@ -356,7 +356,7 @@ async function getMonthTimeline(chit) {
              SELECT 1 FROM chit_members cm2
              WHERE cm2.chit_id = $2 AND cm2.member_id = p.member_id AND cm2.is_active = TRUE
            ))
-         ),
+         )`,
       [md.id, chit.id]
     );
     const participants = await getParticipants(chit.id);
@@ -380,7 +380,7 @@ async function getMonthTimeline(chit) {
       drawnByMemberId: isClub ? null : md.drawn_by_member_id,
       shuffled: isClub ? true : md.shuffled,
       paidCount,
-      capacity: obligatedMemberIds.size,
+      capacity: obligatedParticipants.length,
     });
   }
   return timeline;
