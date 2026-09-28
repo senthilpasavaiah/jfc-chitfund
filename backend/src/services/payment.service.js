@@ -169,6 +169,7 @@ async function paymentOverview(filters = {}, includeOptions = true) {
         ORDER BY cmp_legacy.paid DESC
         LIMIT 1
       ) legacy_cmp ON TRUE
+      WHERE cmd.drawn_by_member_id IS DISTINCT FROM cm.member_id
       ORDER BY c.start_date DESC NULLS LAST, c.ref_number, gs.month_index, m.name
     `),
   ]);
@@ -283,7 +284,8 @@ async function currentPendingSummary() {
         ORDER BY cmp_legacy.paid DESC
         LIMIT 1
       ) legacy_cmp ON TRUE
-      WHERE c.start_date >= $1
+      WHERE cmd.drawn_by_member_id IS DISTINCT FROM cm.member_id
+        AND c.start_date >= $1
         AND c.start_date IS NOT NULL
     `, [NEW_MANAGEMENT_START_DATE]),
   ]);
