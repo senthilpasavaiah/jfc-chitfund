@@ -124,7 +124,7 @@ async function runPaymentReminders(now = new Date()) {
     for (const member of grouped.values()) {
       const pendingTotal = member.pendingContributions.reduce((sum, item) => sum + item.amount, 0);
       const contributionLines = member.pendingContributions
-        .map((item) => `Contribution ${item.slotNumber ?? '-'} — ₹${item.amount.toLocaleString('en-IN')} [${item.chitMemberId}]`)
+        .map((item) => `Contribution ${item.slotNumber ?? '-'} — ₹${item.amount.toLocaleString('en-IN')}`)
         .join('; ');
 
       const subject = `${chit.ref_number} - ${monthLabel} payment reminder`;
