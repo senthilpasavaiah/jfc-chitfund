@@ -53,3 +53,8 @@ jobs:
           node --check src/services/whatsappPaymentAction.service.js
           node --check src/controllers/whatsappPaymentAction.controller.js
           node --check src/routes/whatsappPaymentAction.routes.js
+          node --check src/services/whatsappWebhook.service.js
+          node --check src/controllers/whatsappWebhook.controller.js
+          node --check src/routes/whatsappWebhook.routes.js
+          node --check src/services/whatsapp.provider.js
+          node --check src/controllers/paymentProof.controller.js
