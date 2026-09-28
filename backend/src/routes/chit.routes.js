@@ -112,6 +112,7 @@ router.post(
     body('imageData').notEmpty().withMessage('Image data is required'),
     body('imageMimeType').matches(/^image\//).withMessage('Must be an image'),
     body('memberId').optional().isUUID(),
+    body('chitMemberIds').optional().isArray(),
   ],
   validate,
   paymentProofController.submit
@@ -120,7 +121,7 @@ router.get('/:id/months/:monthIndex/payment-proof', monthParams, validate, requi
 router.post(
   '/:id/months/:monthIndex/payment-manual',
   authorize('ADMIN', 'MANAGER', 'COLLECTOR'),
-  [...monthParams, body('memberId').isUUID()],
+  [...monthParams, body('memberId').isUUID(), body('chitMemberIds').optional().isArray()],
   validate,
   paymentProofController.markManual
 );
