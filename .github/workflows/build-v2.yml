@@ -50,3 +50,6 @@ jobs:
           node --check src/services/chit.service.js
           node --check src/services/notificationScheduler.service.js
           node --check src/services/paymentProof.service.js
+          node --check src/services/whatsappPaymentAction.service.js
+          node --check src/controllers/whatsappPaymentAction.controller.js
+          node --check src/routes/whatsappPaymentAction.routes.js
