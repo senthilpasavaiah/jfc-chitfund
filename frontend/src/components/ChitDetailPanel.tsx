@@ -150,7 +150,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
       return;
     }
     // Turning ON requires proof - open the inline choice instead of toggling directly.
-    setMarkingMemberId((cur) => (cur === memberId ? null : memberId));
+    setMarkingMemberId((cur) => (cur === chitMemberId ? null : chitMemberId));
   }
 
   async function handleMarkAllPaid() {
