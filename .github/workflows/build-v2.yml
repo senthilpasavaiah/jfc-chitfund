@@ -51,7 +51,9 @@ jobs:
           node --check src/routes/activity.routes.js
           node --check src/utils/audit.js
           node --check src/services/chit.service.js
+          node --check src/services/notification.service.js
           node --check src/services/notificationScheduler.service.js
+          node --check src/services/payment.service.js
           node --check src/services/paymentProof.service.js
           node --check src/services/whatsappPaymentAction.service.js
           node --check src/controllers/whatsappPaymentAction.controller.js
@@ -61,3 +63,4 @@ jobs:
           node --check src/routes/whatsappWebhook.routes.js
           node --check src/services/whatsapp.provider.js
           node --check src/controllers/paymentProof.controller.js
+          node --check src/controllers/auth.controller.js
