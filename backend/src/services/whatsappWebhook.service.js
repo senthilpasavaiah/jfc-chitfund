@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { query } = require('../config/db');
 const whatsappPaymentActionService = require('./whatsappPaymentAction.service');
 const whatsappProvider = require('./whatsapp.provider');
+const paymentProofService = require('./paymentProof.service');
 
 function normalisePhone(value) { return String(value || '').replace(/[^0-9]/g, ''); }
 function timingSafeEqualHex(a, b) {
@@ -48,6 +49,56 @@ async function handleMessage(message) {
   const parsed = parseInboundMessage(message);
   const member = await findMemberByWhatsApp(parsed.from);
   if (!member) return { handled: false, reason: 'member_not_found' };
+
+  const openPaid = await whatsappPaymentActionService.getLatestOpenPaidAction(member.id);
+
+  if (parsed.image && openPaid) {
+    const selectedIds = Array.isArray(openPaid.chit_member_ids) ? openPaid.chit_member_ids : [];
+    if (!selectedIds.length) return { handled: false, reason: 'receipt_missing_contribution_selection' };
+    const pendingResult = await whatsappPaymentActionService.listPending(member.id, openPaid.chit_id, openPaid.month_index);
+    const pending = pendingResult.contributions || [];
+    const selectedPending = pending.filter((item) => selectedIds.includes(item.chitMemberId));
+    if (!selectedPending.length) return { handled: false, reason: 'receipt_contributions_no_longer_pending' };
+    const declaredAmount = selectedPending.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const media = await whatsappProvider.downloadMedia(parsed.image.id);
+    const proof = await paymentProofService.submitProof({
+      chitId: openPaid.chit_id,
+      monthIndex: openPaid.month_index,
+      memberId: member.id,
+      chitMemberIds: selectedIds,
+      imageData: media.imageData,
+      imageMimeType: media.imageMimeType,
+      submittedById: member.id,
+      autoConfirm: false,
+      declaredAmount,
+    });
+    await whatsappPaymentActionService.updateActionMetadata(openPaid.id, {
+      receiptMessageId: parsed.providerMessageId,
+      whatsappMediaId: parsed.image.id,
+      mediaSha256: media.sha256,
+      proofId: proof.id,
+    }, 'PROCESSED');
+    await whatsappProvider.sendText({
+      to: member.whatsapp_number || member.mobile_number,
+      body: 'Payment receipt received successfully. Your payment is now pending admin verification. The portal will be marked Paid only after approval.',
+    });
+    return { handled: true, action: 'RECEIPT_SUBMITTED', proofId: proof.id };
+  }
+
+  const utrMatch = String(parsed.actionId || '').match(/^UTR[:\\s-]+(.+)$/i);
+  if (utrMatch && openPaid) {
+    const utr = utrMatch[1].trim().slice(0, 100);
+    const proof = await paymentProofService.attachUtrToPendingProof(member.id, openPaid.chit_id, openPaid.month_index, utr);
+    await whatsappPaymentActionService.updateActionMetadata(openPaid.id, { utrNumber: utr, proofId: proof?.id || null });
+    await whatsappProvider.sendText({
+      to: member.whatsapp_number || member.mobile_number,
+      body: proof
+        ? 'UTR/reference number saved with your payment proof. Admin verification is still required.'
+        : 'UTR/reference number received. Please send the payment screenshot/receipt so it can be submitted for admin verification.',
+    });
+    return { handled: true, action: 'UTR_RECEIVED', proofId: proof?.id || null };
+  }
+
   const parsedAction = parseAction(parsed.actionId);
   if (!parsedAction) return { handled: false, reason: 'unsupported_action' };
   if (parsedAction.selection) {
