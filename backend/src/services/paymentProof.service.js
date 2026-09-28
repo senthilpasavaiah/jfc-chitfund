@@ -37,14 +37,27 @@ async function notifyDrawerOfPayment(chitId, monthIndex, memberId, createdById, 
     ? contributionRows.map((item) => `Contribution ${item.slot_number}`).join(', ')
     : 'legacy member-level payment';
 
+  const { rows: confirmationRows } = await query(
+    `INSERT INTO whatsapp_payment_actions
+      (member_id, chit_id, chit_month_data_id, month_index, chit_member_ids, action, amount, metadata)
+     SELECT $1, md.chit_id, md.id, md.month_index, $2::uuid[], 'DRAWER_CONFIRM', $3,
+            jsonb_build_object('payer_member_id', $4, 'payer_name', $5)
+     FROM chit_month_data md
+     WHERE md.chit_id = $6 AND md.month_index = $7
+     RETURNING id`,
+    [row.drawn_by_member_id, chitMemberIds, chitMemberIds.length, memberId, row.member_name, chitId, monthIndex]
+  );
+  const confirmationId = confirmationRows[0]?.id || null;
+
   await notificationService.dispatch({
     memberId: row.drawn_by_member_id,
     channel: 'WHATSAPP',
     type: 'PAYMENT_RECEIVED',
     subject: `${row.ref_number} - Month ${monthIndex + 1} payment received`,
-    body: `${row.member_name} has paid the Month ${monthIndex + 1} installment for ${row.ref_number}. ${contributionLabel}. Please confirm the payment received.`,
+    body: `${row.member_name} has paid the Month ${monthIndex + 1} installment for ${row.ref_number}. ${contributionLabel}. Please confirm the payment received. Reply: JFC_DRAWER:CONFIRM:${chitId}:${monthIndex}:${memberId}`,
     createdById,
   });
+  return confirmationId;
 }
 
 async function getOrCreateMonthData(chitId, monthIndex) {
