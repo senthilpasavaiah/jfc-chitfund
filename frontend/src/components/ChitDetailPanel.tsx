@@ -126,14 +126,15 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     if (p === 'participants') loadPendingProofs();
   }
 
-  async function handleTogglePaid(memberId: string, currentlyPaid: boolean) {
-    const participant = monthDetail?.participants.find((p) => p.memberId === memberId);
+  async function handleTogglePaid(memberId: string, chitMemberId: string, currentlyPaid: boolean) {
+    const participant = monthDetail?.participants.find((p) => p.chitMemberId === chitMemberId);
+
     if (participant?.paymentExempt) return;
     setError(null);
     // Turning OFF (undo a mistake) doesn't need proof - just flip it back.
     if (currentlyPaid) {
       try {
-        await client.patch(`/chits/${id}/months/${selectedMonth}/payment`, { memberId });
+        await client.patch(`/chits/${id}/months/${selectedMonth}/payment`, { memberId, chitMemberId });
         loadMonth(selectedMonth);
         loadChit();
       } catch (err: any) {
@@ -162,7 +163,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     }
   }
 
-  async function handleAdminUploadProof(memberId: string, file: File) {
+  async function handleAdminUploadProof(memberId: string, chitMemberId: string, file: File) {
     setError(null);
     setUploading(true);
     try {
@@ -174,7 +175,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
       });
       const [meta, base64] = dataUrl.split(',');
       const mimeType = meta.match(/data:(.*);base64/)?.[1] || file.type;
-      await client.post(`/chits/${id}/months/${selectedMonth}/payment-proof`, { imageData: base64, imageMimeType: mimeType, memberId });
+      await client.post(`/chits/${id}/months/${selectedMonth}/payment-proof`, { imageData: base64, imageMimeType: mimeType, memberId, chitMemberIds: [chitMemberId] });
       setMarkingMemberId(null);
       loadMonth(selectedMonth);
       loadChit();
@@ -185,10 +186,10 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
     }
   }
 
-  async function handleMarkManual(memberId: string) {
+  async function handleMarkManual(memberId: string, chitMemberId: string) {
     setError(null);
     try {
-      await client.post(`/chits/${id}/months/${selectedMonth}/payment-manual`, { memberId });
+      await client.post(`/chits/${id}/months/${selectedMonth}/payment-manual`, { memberId, chitMemberIds: [chitMemberId] });
       setMarkingMemberId(null);
       loadMonth(selectedMonth);
       loadChit();
@@ -522,7 +523,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                         <span>Paid</span>
                         <button
                           role="switch" aria-checked={p.paid}
-                          onClick={() => handleTogglePaid(p.memberId, p.paid)}
+                          onClick={() => handleTogglePaid(p.memberId, p.chitMemberId, p.paid)}
                           className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${p.paid ? 'bg-success' : 'bg-line'}`}
                         >
                           <span className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform" style={{ transform: p.paid ? 'translateX(16px)' : 'translateX(0)' }} />
@@ -535,9 +536,9 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                         <p className="text-[10px] text-ink-muted">Proof needed to mark paid:</p>
                         <label className="block text-xs bg-navy text-white rounded px-2 py-1 cursor-pointer text-center">
                           {uploading ? 'Uploading…' : '📤 Upload screenshot'}
-                          <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={(e) => e.target.files?.[0] && handleAdminUploadProof(p.memberId, e.target.files[0])} />
+                          <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={(e) => e.target.files?.[0] && handleAdminUploadProof(p.memberId, p.chitMemberId, e.target.files[0])} />
                         </label>
-                        <button onClick={() => handleMarkManual(p.memberId)} className="w-full text-xs bg-line text-ink px-2 py-1 rounded cursor-pointer">Mark manually (no screenshot)</button>
+                        <button onClick={() => handleMarkManual(p.memberId, p.chitMemberId)} className="w-full text-xs bg-line text-ink px-2 py-1 rounded cursor-pointer">Mark manually (no screenshot)</button>
                         <button onClick={() => setMarkingMemberId(null)} className="w-full text-[10px] text-ink-muted cursor-pointer">Cancel</button>
                       </div>
                     )}
