@@ -270,6 +270,12 @@ async function listPending(chitId) {
   return rows;
 }
 
+async function getProofAccess(proofId) {
+  const { rows } = await query('SELECT id, member_id FROM chit_payment_proofs WHERE id = $1', [proofId]);
+  if (!rows[0]) throw ApiError.notFound('Payment proof not found');
+  return rows[0];
+}
+
 async function getProofImage(proofId) {
   const { rows } = await query('SELECT image_data, image_mime_type FROM chit_payment_proofs WHERE id = $1', [proofId]);
   if (!rows[0]) throw ApiError.notFound('Payment proof not found');
@@ -313,4 +319,5 @@ module.exports = {
   getProofImage,
   getForMonth,
   attachUtrToPendingProof,
+  getProofAccess,
 };
