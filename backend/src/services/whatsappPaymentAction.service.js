@@ -68,6 +68,16 @@ async function recordAction({
 }) {
   if (!ACTIONS.includes(action)) throw ApiError.badRequest('Invalid WhatsApp payment action.');
 
+  // Return the original action before re-checking current payment state so
+  // provider retries remain idempotent even after the payment was confirmed.
+  if (providerMessageId) {
+    const { rows: duplicateRows } = await query(
+      'SELECT * FROM whatsapp_payment_actions WHERE provider_message_id = $1 LIMIT 1',
+      [providerMessageId]
+    );
+    if (duplicateRows[0]) return duplicateRows[0];
+  }
+
   const pending = await getPendingContributions(memberId, chitId, monthIndex);
   if (!pending.contributions.length) {
     throw ApiError.badRequest('No pending payment contribution exists for this member and chit month.');
@@ -77,14 +87,6 @@ async function recordAction({
   if (action === 'PAID' && amount == null) {
     const selected = pending.contributions.filter((item) => requested.includes(item.chitMemberId));
     amount = selected.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  }
-
-  if (providerMessageId) {
-    const { rows: duplicateRows } = await query(
-      'SELECT * FROM whatsapp_payment_actions WHERE provider_message_id = $1 LIMIT 1',
-      [providerMessageId]
-    );
-    if (duplicateRows[0]) return duplicateRows[0];
   }
 
   if (action === 'PAID' || action === 'SELECT_CONTRIBUTIONS') {
