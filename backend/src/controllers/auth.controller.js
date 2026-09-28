@@ -96,7 +96,7 @@ async function forgotPassword(req, res) {
     // notification for the affected member.
     await notificationService.dispatch({
       memberId: result.memberId,
-      channel: 'PORTAL',
+      channel: 'SMS',
       type: 'GENERAL',
       subject: 'Password reset requested',
       body: 'A password reset was requested. Use the reset flow to continue. The reset token is not stored in notifications.',
