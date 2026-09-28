@@ -1,0 +1,101 @@
+const META_GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || 'v23.0';
+const GRAPH_BASE = 'https://graph.facebook.com';
+
+function isEnabled() {
+  return String(process.env.WHATSAPP_ENABLED || '').toLowerCase() === 'true';
+}
+
+function getConfig() {
+  return {
+    accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+    reminderTemplate: process.env.WHATSAPP_PAYMENT_REMINDER_TEMPLATE || '',
+    templateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'en_US',
+  };
+}
+
+function normalisePhone(value) {
+  return String(value || '').replace(/[^0-9]/g, '');
+}
+
+async function sendTemplate({ to, templateName, languageCode, bodyParameters = [] }) {
+  const config = getConfig();
+  if (!config.accessToken || !config.phoneNumberId) {
+    throw new Error('WhatsApp is enabled but WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID is missing.');
+  }
+  if (!templateName) {
+    throw new Error('WhatsApp template name is required for an outbound template message.');
+  }
+
+  const recipient = normalisePhone(to);
+  if (!recipient) throw new Error('Recipient does not have a valid WhatsApp number.');
+
+  const components = bodyParameters.length
+    ? [{ type: 'body', parameters: bodyParameters.map((text) => ({ type: 'text', text: String(text) })) }]
+    : [];
+
+  const response = await fetch(
+    `${GRAPH_BASE}/${META_GRAPH_VERSION}/${config.phoneNumberId}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: recipient,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: languageCode || config.templateLanguage },
+          ...(components.length ? { components } : {}),
+        },
+      }),
+    }
+  );
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = payload?.error?.message || `WhatsApp API returned HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return payload;
+}
+
+/**
+ * Sends only when explicitly enabled. With the default configuration
+ * (WHATSAPP_ENABLED is not "true") this function performs no network call.
+ */
+async function sendNotification({ member, type, subject, body }) {
+  if (!isEnabled()) return { enabled: false, sent: false };
+
+  const to = member?.whatsapp_number || member?.mobile_number;
+  if (!to) throw new Error('Member has no WhatsApp/mobile number configured.');
+
+  const config = getConfig();
+
+  // Proactive payment reminders use an approved template. Other notification
+  // types remain logged until their production-safe templates/interactive
+  // flows are configured.
+  if (type === 'PAYMENT_REMINDER') {
+    if (!config.reminderTemplate) {
+      throw new Error('WHATSAPP_PAYMENT_REMINDER_TEMPLATE is not configured.');
+    }
+    const result = await sendTemplate({
+      to,
+      templateName: config.reminderTemplate,
+      languageCode: config.templateLanguage,
+      bodyParameters: [member.name || '', subject || '', body || ''],
+    });
+    return { enabled: true, sent: true, providerMessageId: result?.messages?.[0]?.id || null };
+  }
+
+  // Deliberately do not send other automated types yet. This prevents
+  // accidental free-form/proactive messages before their approved templates
+  // and interactive flows are configured.
+  return { enabled: true, sent: false, deferred: true };
+}
+
+module.exports = { isEnabled, sendNotification, sendTemplate };
