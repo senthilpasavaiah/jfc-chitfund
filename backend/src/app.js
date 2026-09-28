@@ -23,6 +23,7 @@ const reportRoutes = require('./routes/report.routes');
 const fundRoutes = require('./routes/fund.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const documentRoutes = require('./routes/document.routes');
+const whatsappPaymentActionRoutes = require('./routes/whatsappPaymentAction.routes');
 
 const app = express();
 
@@ -91,6 +92,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/funds', fundRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/whatsapp/payment-actions', whatsappPaymentActionRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
