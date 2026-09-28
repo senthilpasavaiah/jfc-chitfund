@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - activity-log-v2
+      - whatsapp-development-v2
   pull_request:
     branches:
       - main
