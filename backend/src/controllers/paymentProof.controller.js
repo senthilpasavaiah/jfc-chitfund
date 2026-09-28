@@ -11,6 +11,7 @@ async function submit(req, res) {
     chitId: req.params.id,
     monthIndex: Number(req.params.monthIndex),
     memberId,
+    chitMemberIds: req.body.chitMemberIds,
     imageData: req.body.imageData,
     imageMimeType: req.body.imageMimeType,
     submittedById: req.user.id,
@@ -21,7 +22,7 @@ async function submit(req, res) {
 }
 
 async function markManual(req, res) {
-  await paymentProofService.markPaidManually(req.params.id, Number(req.params.monthIndex), req.body.memberId, req.user.id);
+  await paymentProofService.markPaidManually(req.params.id, Number(req.params.monthIndex), req.body.memberId, req.user.id, req.body.chitMemberIds);
   await recordAudit({ userId: req.user.id, action: 'PAYMENT_MARK_MANUAL', entityType: 'Chit', entityId: req.params.id, metadata: { monthIndex: req.params.monthIndex, memberId: req.body.memberId }, ipAddress: req.ip });
   res.json({ success: true, message: 'Marked as paid (manual entry, no screenshot).' });
 }
