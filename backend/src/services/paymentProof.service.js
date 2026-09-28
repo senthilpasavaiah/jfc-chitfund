@@ -106,7 +106,7 @@ async function submitProof({ chitId, monthIndex, memberId, chitMemberIds = [], i
        SET image_data = $1, image_mime_type = $2, status = $3, submitted_by_id = $4,
            reviewed_by_id = $5, reviewed_at = $6, rejection_reason = NULL,
            chit_member_ids = $7, utr_number = $8, declared_amount = $9, created_at = now()
-       WHERE id = $8 RETURNING *`,
+       WHERE id = $10 RETURNING *`,
       [imageData, imageMimeType, status, submittedById, autoConfirm ? submittedById : null, autoConfirm ? new Date() : null, selectedSlotIds, utrNumber || null, declaredAmount == null ? null : Number(declaredAmount), existing.id]
     );
     proof = rows[0];
