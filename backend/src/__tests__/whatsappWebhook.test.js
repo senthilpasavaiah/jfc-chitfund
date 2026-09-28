@@ -1,4 +1,5 @@
-const { parseAction, parseInboundMessage } = require('../services/whatsappWebhook.service');
+const crypto = require('crypto');
+const { parseAction, parseInboundMessage, verifySignature } = require('../services/whatsappWebhook.service');
 
 describe('WhatsApp webhook parsing', () => {
   test('parses contextual payment actions', () => {
@@ -25,5 +26,15 @@ describe('WhatsApp webhook parsing', () => {
       text: { body: 'UTR: 123456789' },
     });
     expect(message.actionId).toBe('UTR: 123456789');
+  });
+  test('verifies Meta webhook signature and rejects a tampered payload', () => {
+    const previous = process.env.WHATSAPP_APP_SECRET;
+    process.env.WHATSAPP_APP_SECRET = 'test-secret';
+    const rawBody = Buffer.from('{"hello":"world"}');
+    const signature = 'sha256=' + crypto.createHmac('sha256', 'test-secret').update(rawBody).digest('hex');
+    expect(verifySignature(rawBody, signature)).toBe(true);
+    expect(verifySignature(rawBody, signature.slice(0, -1) + (signature.endsWith('0') ? '1' : '0'))).toBe(false);
+    if (previous === undefined) delete process.env.WHATSAPP_APP_SECRET;
+    else process.env.WHATSAPP_APP_SECRET = previous;
   });
 });
