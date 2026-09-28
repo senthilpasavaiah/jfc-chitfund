@@ -9,12 +9,12 @@ describe('WhatsApp webhook parsing', () => {
 
   test('parses contribution selection and BOTH', () => {
     expect(parseAction('JFC_PAY:abc-123:4:BOTH').selection).toBe('BOTH');
-    expect(parseAction('JFC_PAY:abc-123:4:slot-1').selection).toBe('slot-1');
+    expect(parseAction('JFC_PAY:abc-123:4:123e4567-e89b-12d3-a456-426614174000').selection).toBe('123e4567-e89b-12d3-a456-426614174000');
   });
 
   test('parses drawer confirmation only with explicit context', () => {
-    expect(parseAction('JFC_DRAWER:CONFIRM:abc-123:4:member-1')).toEqual({
-      drawerAction: 'CONFIRM', chitId: 'abc-123', monthIndex: 4, payerMemberId: 'member-1',
+    expect(parseAction('JFC_DRAWER:CONFIRM:abc-123:4:123e4567-e89b-12d3-a456-426614174001')).toEqual({
+      drawerAction: 'CONFIRM', chitId: 'abc-123', monthIndex: 4, payerMemberId: '123e4567-e89b-12d3-a456-426614174001',
     });
   });
 
