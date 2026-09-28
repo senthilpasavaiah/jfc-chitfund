@@ -5,9 +5,9 @@ async function submit(req, res) {
   // A member submits their own proof (goes to pending review). An
   // admin/manager can submit on behalf of a member - since the admin IS
   // the authority, that's auto-confirmed immediately rather than queued.
-  const isPrivileged = ['ADMIN', 'MANAGER', 'COLLECTOR'].includes(req.user.role);
-  const memberId = isPrivileged && req.body.memberId ? req.body.memberId : req.user.memberId;
-  const isAdminSubmitting = req.user.role === 'ADMIN' || req.user.role === 'MANAGER';
+  const canSubmitForAnotherMember = req.user.role === 'ADMIN' || req.user.role === 'MANAGER';
+  const memberId = canSubmitForAnotherMember && req.body.memberId ? req.body.memberId : req.user.memberId;
+  const isAdminSubmitting = canSubmitForAnotherMember;
   const proof = await paymentProofService.submitProof({
     chitId: req.params.id,
     monthIndex: Number(req.params.monthIndex),
@@ -57,8 +57,8 @@ async function getImage(req, res) {
 }
 
 async function getForMonth(req, res) {
-  const isPrivileged = ['ADMIN', 'MANAGER', 'COLLECTOR'].includes(req.user.role);
-  const memberId = isPrivileged && req.query.memberId ? req.query.memberId : req.user.memberId;
+  const canViewAnotherMember = req.user.role === 'ADMIN' || req.user.role === 'MANAGER';
+  const memberId = canViewAnotherMember && req.query.memberId ? req.query.memberId : req.user.memberId;
   const proof = await paymentProofService.getForMonth(req.params.id, Number(req.params.monthIndex), memberId);
   res.json({ success: true, data: proof });
 }
