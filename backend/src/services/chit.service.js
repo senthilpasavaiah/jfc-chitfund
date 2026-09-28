@@ -426,6 +426,7 @@ async function getMonthDetail(chit, monthIndex) {
     const isDrawer = paymentExempt && !drawerRowAssigned;
     if (isDrawer) drawerRowAssigned = true;
     return {
+      chitMemberId: p.id,
       memberId: p.member_id,
       name: p.name,
       slotNumber: p.slot_number,
