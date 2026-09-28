@@ -101,6 +101,19 @@ async function submitProof({ chitId, monthIndex, memberId, chitMemberIds = [], i
   const selectedSlotIds = selectedSlots.map((p) => p.id);
   const { monthData } = await getOrCreateMonthData(chitId, monthIndex);
 
+  const { rows: paidRows } = await query(
+    `SELECT chit_member_id
+     FROM chit_month_payments
+     WHERE chit_month_data_id = $1
+       AND chit_member_id = ANY($2::uuid[])
+       AND paid = TRUE`,
+    [monthData.id, selectedSlotIds]
+  );
+  const paidSlotIds = new Set(paidRows.map((row) => row.chit_member_id));
+  if ([...paidSlotIds].length) {
+    throw ApiError.conflict('One or more selected contributions are already marked Paid. Please select only pending contributions.');
+  }
+
   if (declaredAmount != null) {
     const expectedPerContribution = Number(chitService.chitMonthlyPaymentForRound(chit, monthIndex));
     const expectedTotal = expectedPerContribution * selectedSlots.length;
