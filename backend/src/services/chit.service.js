@@ -359,14 +359,19 @@ async function getMonthTimeline(chit) {
          ),
       [md.id, chit.id]
     );
-    const paidMemberIds = new Set(paymentsResult.rows.filter((p) => p.paid).map((p) => p.member_id));
     const participants = await getParticipants(chit.id);
-    const obligatedMemberIds = new Set(
-      participants
-        .filter((participant) => participant.member_id !== md.drawn_by_member_id)
-        .map((participant) => participant.member_id)
+    const obligatedParticipants = participants.filter(
+      (participant) => participant.member_id !== md.drawn_by_member_id
     );
-    const paidCount = Array.from(obligatedMemberIds).filter((memberId) => paidMemberIds.has(memberId)).length;
+    const paidSlotIds = new Set(
+      paymentsResult.rows.filter((p) => p.paid && p.chit_member_id).map((p) => p.chit_member_id)
+    );
+    const legacyPaidMembers = new Set(
+      paymentsResult.rows.filter((p) => p.paid && !p.chit_member_id).map((p) => p.member_id)
+    );
+    const paidCount = obligatedParticipants.filter(
+      (participant) => paidSlotIds.has(participant.id) || legacyPaidMembers.has(participant.member_id)
+    ).length;
 
     timeline.push({
       monthIndex: i,
@@ -481,7 +486,7 @@ async function togglePaid(chitId, monthIndex, memberId, chitMemberId) {
   await query(
     `INSERT INTO chit_month_payments (chit_month_data_id, member_id, chit_member_id, paid)
      VALUES ($1,$2,$3,$4)
-     ON CONFLICT (chit_month_data_id, chit_member_id) DO UPDATE SET paid = EXCLUDED.paid`,
+     ON CONFLICT (chit_month_data_id, chit_member_id) WHERE chit_member_id IS NOT NULL DO UPDATE SET paid = EXCLUDED.paid`,
     [md.id, memberId, slot.id, !current]
   );
 }
@@ -495,7 +500,7 @@ async function payForMonth(chitId, monthIndex, memberId, chitMemberId) {
   await query(
     `INSERT INTO chit_month_payments (chit_month_data_id, member_id, chit_member_id, paid)
      VALUES ($1,$2,$3,TRUE)
-     ON CONFLICT (chit_month_data_id, chit_member_id) DO UPDATE SET paid = TRUE`,
+     ON CONFLICT (chit_month_data_id, chit_member_id) WHERE chit_member_id IS NOT NULL DO UPDATE SET paid = TRUE`,
     [md.id, memberId, slot.id]
   );
 }
