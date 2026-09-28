@@ -51,7 +51,8 @@ async function handleMessage(message) {
   const parsedAction = parseAction(parsed.actionId);
   if (!parsedAction) return { handled: false, reason: 'unsupported_action' };
   if (parsedAction.selection) {
-    const pending = await whatsappPaymentActionService.listPending(member.id, parsedAction.chitId, parsedAction.monthIndex);
+    const pendingResult = await whatsappPaymentActionService.listPending(member.id, parsedAction.chitId, parsedAction.monthIndex);
+    const pending = pendingResult.contributions || [];
     const selectedIds = parsedAction.selection === 'BOTH' ? pending.map((item) => item.chitMemberId) : pending.filter((item) => item.chitMemberId === parsedAction.selection).map((item) => item.chitMemberId);
     if (!selectedIds.length) return { handled: false, reason: 'invalid_or_already_paid_contribution' };
     const result = await whatsappPaymentActionService.recordAction({ memberId: member.id, chitId: parsedAction.chitId, monthIndex: parsedAction.monthIndex, action: 'PAID', chitMemberIds: selectedIds, providerMessageId: parsed.providerMessageId, metadata: { source: 'whatsapp_webhook' } });
@@ -60,7 +61,8 @@ async function handleMessage(message) {
   }
   if (!parsedAction.chitId || parsedAction.monthIndex == null) return { handled: false, reason: 'missing_payment_context' };
   if (parsedAction.action === 'PAID') {
-    const pending = await whatsappPaymentActionService.listPending(member.id, parsedAction.chitId, parsedAction.monthIndex);
+    const pendingResult = await whatsappPaymentActionService.listPending(member.id, parsedAction.chitId, parsedAction.monthIndex);
+    const pending = pendingResult.contributions || [];
     if (!pending.length) return { handled: false, reason: 'no_pending_contributions' };
     if (pending.length > 1) {
       const result = await whatsappPaymentActionService.recordAction({ memberId: member.id, chitId: parsedAction.chitId, monthIndex: parsedAction.monthIndex, action: 'SELECT_CONTRIBUTIONS', providerMessageId: parsed.providerMessageId, metadata: { source: 'whatsapp_webhook', pendingCount: pending.length } });
