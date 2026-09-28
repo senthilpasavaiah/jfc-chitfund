@@ -127,6 +127,8 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   }
 
   async function handleTogglePaid(memberId: string, currentlyPaid: boolean) {
+    const participant = monthDetail?.participants.find((p) => p.memberId === memberId);
+    if (participant?.paymentExempt) return;
     setError(null);
     // Turning OFF (undo a mistake) doesn't need proof - just flip it back.
     if (currentlyPaid) {
@@ -442,8 +444,8 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                 <div className="text-xs uppercase tracking-wide text-ink-muted">Participants — Payment &amp; Draw Assignment</div>
                 <button
                   onClick={handleMarkAllPaid}
-                  disabled={markingAll || monthDetail.participants.length === 0 || monthDetail.participants.every((p) => p.paid)}
-                  title="Marks every participant Paid for this month only. Jolly Friends Club is excluded — it never has a payment row."
+                  disabled={markingAll || monthDetail.participants.length === 0 || monthDetail.participants.every((p) => p.paymentExempt || p.paid)}
+                  title="Marks every payment-obligated participant Paid for this month only. The drawer and Jolly Friends Club are excluded."
                   className="text-xs font-medium bg-success text-white px-3 py-1.5 rounded-md cursor-pointer hover:bg-success/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {markingAll ? 'Marking…' : '✓ Select All Paid'}
@@ -513,18 +515,22 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                       {initials(p.name)}
                     </div>
                     <div className={`text-sm ${isDisplayedDrawer ? 'font-bold text-gold-dim' : 'font-medium'}`}>{p.name}</div>
-                    <label className="flex items-center gap-1.5 text-xs text-ink-muted">
-                      <span>Paid</span>
-                      <button
-                        role="switch" aria-checked={p.paid}
-                        onClick={() => handleTogglePaid(p.memberId, p.paid)}
-                        className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${p.paid ? 'bg-success' : 'bg-line'}`}
-                      >
-                        <span className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform" style={{ transform: p.paid ? 'translateX(16px)' : 'translateX(0)' }} />
-                      </button>
-                    </label>
+                    {p.paymentExempt ? (
+                      <span className="text-xs font-medium text-gold-dim bg-gold/10 px-2 py-1 rounded-full">Drawer — No payment required</span>
+                    ) : (
+                      <label className="flex items-center gap-1.5 text-xs text-ink-muted">
+                        <span>Paid</span>
+                        <button
+                          role="switch" aria-checked={p.paid}
+                          onClick={() => handleTogglePaid(p.memberId, p.paid)}
+                          className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${p.paid ? 'bg-success' : 'bg-line'}`}
+                        >
+                          <span className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform" style={{ transform: p.paid ? 'translateX(16px)' : 'translateX(0)' }} />
+                        </button>
+                      </label>
+                    )}
 
-                    {markingMemberId === p.memberId && !p.paid && (
+                    {markingMemberId === p.memberId && !p.paid && !p.paymentExempt && (
                       <div className="w-full bg-paper rounded-md p-2 space-y-1.5">
                         <p className="text-[10px] text-ink-muted">Proof needed to mark paid:</p>
                         <label className="block text-xs bg-navy text-white rounded px-2 py-1 cursor-pointer text-center">
