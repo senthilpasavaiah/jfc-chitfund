@@ -191,6 +191,18 @@ async function markPaidManually(chitId, monthIndex, memberId, adminUserId, chitM
   const selected = requested.length ? participants.rows.filter((p) => requested.includes(p.id)).map((p) => p.id) : participants.rows.map((p) => p.id);
   if (!selected.length) throw ApiError.badRequest('Select at least one valid contribution.');
   if (requested.length && selected.length !== requested.length) throw ApiError.badRequest('One or more selected contributions are invalid.');
+  if (declaredAmount != null) {
+    const chit = await chitService.getById(chitId);
+    const expectedPerContribution = Number(chitService.chitMonthlyPaymentForRound(chit, monthIndex));
+    const expectedTotal = expectedPerContribution * selected.length;
+    const declared = Number(declaredAmount);
+    if (!Number.isFinite(declared) || declared <= 0) {
+      throw ApiError.badRequest('Declared payment amount must be greater than zero.');
+    }
+    if (Math.abs(declared - expectedTotal) > 0.01) {
+      throw ApiError.badRequest(`Declared amount ₹${declared.toFixed(2)} does not match the selected ${selected.length} contribution${selected.length === 1 ? '' : 's'} total of ₹${expectedTotal.toFixed(2)}.`);
+    }
+  }
   for (const chitMemberId of selected) {
     await chitService.payForMonth(chitId, monthIndex, memberId, chitMemberId);
   }
