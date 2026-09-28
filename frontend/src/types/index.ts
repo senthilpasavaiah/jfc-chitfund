@@ -75,6 +75,7 @@ export interface ChitDetail extends Chit {
 }
 
 export interface ChitMonthParticipant {
+  chitMemberId: string;
   memberId: string;
   name: string;
   slotNumber?: number;
