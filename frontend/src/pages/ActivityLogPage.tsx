@@ -33,17 +33,47 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 function actionLabel(action: string) {
-  return ACTION_LABELS[action] || action.replaceAll('_', ' ').toLowerCase().replace(/(^| )\w/g, (c) => c.toUpperCase());
+  return ACTION_LABELS[action] || action.replaceAll('_', ' ').toLowerCase().replace(/(^| )\\w/g, (c) => c.toUpperCase());
 }
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
 function prettyModule(value: string) {
-  return value.replaceAll('_', ' ').replace(/(^| )\w/g, (c) => c.toUpperCase());
+  return value.replaceAll('_', ' ').replace(/(^| )\\w/g, (c) => c.toUpperCase());
 }
 function escapeCsv(value: unknown) {
   return `"${String(value ?? '').replaceAll('"', '""')}"`;
 }
+function riskFor(action: string) {
+  if (/(DELETE|DEACTIVATE|PASSWORD_RESET|ADMIN_GRANT|ADMIN_REVOKE|DRAW_RECALL)/.test(action)) return 'HIGH';
+  if (/(UPDATE|PAYMENT|PROOF_REVIEW|MARK_ALL|SHUFFLE)/.test(action)) return 'MEDIUM';
+  return 'LOW';
+}
+function riskClass(risk: string) {
+  return risk === 'HIGH' ? 'bg-red-50 text-red-700 border-red-200' : risk === 'MEDIUM' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+}
+function metadataObject(metadata: Record<string, unknown> | null) {
+  return metadata && typeof metadata === 'object' ? metadata : {};
+}
+function humanDetails(row: ActivityRow) {
+  const m = metadataObject(row.metadata);
+  const name = m.memberName || m.member_name || m.name;
+  const chit = m.chitName || m.chit_name;
+  const month = m.monthNumber || m.month_number;
+  const amount = m.amount;
+  const parts = [name ? `Member: ${name}` : '', chit ? `Chit: ${chit}` : '', month ? `Month: ${month}` : '', amount !== undefined ? `Amount: ₹${amount}` : ''].filter(Boolean);
+  return parts.length ? parts.join(' • ') : 'No additional summary was recorded.';
+}
+function getBeforeAfter(metadata: Record<string, unknown> | null) {
+  const m = metadataObject(metadata);
+  const before = m.before ?? m.old ?? m.previous ?? null;
+  const after = m.after ?? m.new ?? m.current ?? null;
+  return { before, after };
+}
+function jsonBlock(value: unknown) {
+  return value == null ? '—' : JSON.stringify(value, null, 2);
+}
+
 
 export default function ActivityLogPage() {
   const { user } = useAuth();
