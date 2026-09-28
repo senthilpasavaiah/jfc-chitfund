@@ -83,24 +83,49 @@ async function runPaymentReminders(now = new Date()) {
       .toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: IST_TIME_ZONE });
     const expected = chitService.chitMonthlyPaymentForRound(chit, monthIndex);
 
+
     const { rows: participants } = await query(
-      `SELECT cm.member_id, m.name, m.whatsapp_number, m.mobile_number,
+      `SELECT cm.id AS chit_member_id, cm.member_id, cm.slot_number,
+              m.name, m.whatsapp_number, m.mobile_number,
               COALESCE(cmp.paid, FALSE) AS paid
        FROM chit_members cm
        JOIN members m ON m.id = cm.member_id
        LEFT JOIN chit_month_payments cmp
-         ON cmp.chit_month_data_id = $1 AND cmp.member_id = cm.member_id
+         ON cmp.chit_month_data_id = $1 AND cmp.chit_member_id = cm.id
        WHERE cm.chit_id = $2
          AND cm.is_active = TRUE
          AND cm.member_id IS DISTINCT FROM (
            SELECT drawn_by_member_id FROM chit_month_data WHERE id = $1
          )
-       ORDER BY m.name`,
+       ORDER BY m.name, cm.slot_number`,
       [monthDataId, chit.id]
     );
 
-    for (const member of participants) {
-      if (member.paid) continue;
+    const legacyPaid = await query(
+      `SELECT member_id FROM chit_month_payments
+       WHERE chit_month_data_id = $1 AND chit_member_id IS NULL AND paid = TRUE`,
+      [monthDataId]
+    );
+    const legacyPaidMembers = new Set(legacyPaid.rows.map((r) => r.member_id));
+    const grouped = new Map();
+    for (const participant of participants) {
+      const paid = participant.paid || legacyPaidMembers.has(participant.member_id);
+      if (paid) continue;
+      if (!grouped.has(participant.member_id)) {
+        grouped.set(participant.member_id, { ...participant, pendingContributions: [] });
+      }
+      grouped.get(participant.member_id).pendingContributions.push({
+        chitMemberId: participant.chit_member_id,
+        slotNumber: participant.slot_number,
+        amount: Number(expected),
+      });
+    }
+
+    for (const member of grouped.values()) {
+      const pendingTotal = member.pendingContributions.reduce((sum, item) => sum + item.amount, 0);
+      const contributionLines = member.pendingContributions
+        .map((item) => `Contribution ${item.slotNumber ?? '-'} — ₹${item.amount.toLocaleString('en-IN')} [${item.chitMemberId}]`)
+        .join('; ');
 
       const subject = `${chit.ref_number} - ${monthLabel} payment reminder`;
       const { rows: alreadySent } = await query(
@@ -121,7 +146,7 @@ async function runPaymentReminders(now = new Date()) {
         channel: 'WHATSAPP',
         type: 'PAYMENT_REMINDER',
         subject,
-        body: `Your ${monthLabel} payment for ${chit.ref_number} is pending. Expected amount: ₹${Number(expected).toLocaleString('en-IN')}. Please complete the payment by the 15th. Once your payment is recorded, no further reminder will be generated for this month.`,
+        body: `Your ${monthLabel} payment for ${chit.ref_number} is pending. Pending contributions: ${contributionLines}. Total pending: ₹${pendingTotal.toLocaleString('en-IN')}. If you pay all listed contributions together, one cumulative payment can cover them all; the system will record each contribution separately. Please complete the payment by the 15th.`,
         createdById: adminId,
       });
       sent += 1;
