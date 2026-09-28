@@ -5,6 +5,40 @@ const notificationService = require('./notification.service');
 
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024; // ~6MB raw, comfortably under the 8mb JSON body limit once base64-encoded
 
+async function notifyDrawerOfPayment(chitId, monthIndex, memberId, createdById) {
+  const { rows } = await query(
+    `SELECT md.drawn_by_member_id, c.ref_number, m.name AS member_name
+     FROM chit_month_data md
+     JOIN chits c ON c.id = md.chit_id
+     JOIN members m ON m.id = $3
+     WHERE md.chit_id = $1 AND md.month_index = $2`,
+    [chitId, monthIndex, memberId]
+  );
+  const row = rows[0];
+  if (!row?.drawn_by_member_id || row.drawn_by_member_id === memberId) return;
+
+  const { rows: existing } = await query(
+    `SELECT 1
+     FROM notifications
+     WHERE member_id = $1
+       AND type = 'PAYMENT_RECEIVED'
+       AND subject = $2
+       AND created_at >= ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date AT TIME ZONE 'Asia/Kolkata')
+     LIMIT 1`,
+    [row.drawn_by_member_id, `${row.ref_number} - Month ${monthIndex + 1} payment received`]
+  );
+  if (existing.length) return;
+
+  await notificationService.dispatch({
+    memberId: row.drawn_by_member_id,
+    channel: 'WHATSAPP',
+    type: 'PAYMENT_RECEIVED',
+    subject: `${row.ref_number} - Month ${monthIndex + 1} payment received`,
+    body: `${row.member_name} has paid the Month ${monthIndex + 1} installment for ${row.ref_number}. Please confirm the payment received.`,
+    createdById,
+  });
+}
+
 async function getOrCreateMonthData(chitId, monthIndex) {
   const chit = await chitService.getById(chitId);
   const { rows } = await query(
@@ -70,6 +104,7 @@ async function submitProof({ chitId, monthIndex, memberId, imageData, imageMimeT
 
   if (autoConfirm) {
     await chitService.payForMonth(chitId, monthIndex, memberId);
+    await notifyDrawerOfPayment(chitId, monthIndex, memberId, submittedById);
   }
 
   const { rows: memberRows } = await query('SELECT name FROM members WHERE id = $1', [memberId]);
@@ -91,6 +126,7 @@ async function submitProof({ chitId, monthIndex, memberId, imageData, imageMimeT
 /** Admin marks a member paid without any screenshot at all - a plain manual entry. */
 async function markPaidManually(chitId, monthIndex, memberId, adminUserId) {
   await chitService.payForMonth(chitId, monthIndex, memberId);
+  await notifyDrawerOfPayment(chitId, monthIndex, memberId, adminUserId);
   const { monthData } = await getOrCreateMonthData(chitId, monthIndex);
   // Record a lightweight audit row so this shows up the same way a proof
   // would (status confirmed, but with no image) - keeps the history clean.
@@ -116,6 +152,7 @@ async function reviewProof(proofId, { decision, reviewerUserId, rejectionReason 
     const { rows: mdRows } = await query('SELECT chit_id, month_index FROM chit_month_data WHERE id = $1', [proof.chit_month_data_id]);
     const { chit_id: chitId, month_index: monthIndex } = mdRows[0];
     await chitService.payForMonth(chitId, monthIndex, proof.member_id);
+    await notifyDrawerOfPayment(chitId, monthIndex, proof.member_id, reviewerUserId);
   } else if (decision === 'reject') {
     await query(
       `UPDATE chit_payment_proofs SET status = 'rejected', reviewed_by_id = $1, reviewed_at = now(), rejection_reason = $2 WHERE id = $3`,
