@@ -51,10 +51,13 @@ async function sendSelectionPrompt(member, chitId, monthIndex, pending) {
 async function claimProviderMessage(providerMessageId) {
   if (!providerMessageId) return true;
   const { rows } = await query(
-    'SELECT id FROM whatsapp_payment_actions WHERE provider_message_id = $1 LIMIT 1',
+    `INSERT INTO whatsapp_webhook_events (provider_message_id)
+     VALUES ($1)
+     ON CONFLICT (provider_message_id) DO NOTHING
+     RETURNING id`,
     [providerMessageId]
   );
-  return rows.length === 0;
+  return rows.length === 1;
 }
 
 async function handleMessage(message) {
