@@ -97,3 +97,32 @@ async function listPending(memberId, chitId, monthIndex) {
 }
 
 module.exports = { ACTIONS, getPendingContributions, recordAction, listPending };
+
+
+async function getLatestOpenPaidAction(memberId) {
+  const { rows } = await query(
+    `SELECT *
+     FROM whatsapp_payment_actions
+     WHERE member_id = $1 AND action = 'PAID' AND status = 'OPEN'
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [memberId]
+  );
+  return rows[0] || null;
+}
+
+async function updateActionMetadata(actionId, patch, status = null) {
+  const { rows } = await query(
+    `UPDATE whatsapp_payment_actions
+     SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+         status = COALESCE($3, status),
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [actionId, JSON.stringify(patch || {}), status]
+  );
+  return rows[0] || null;
+}
+
+module.exports.getLatestOpenPaidAction = getLatestOpenPaidAction;
+module.exports.updateActionMetadata = updateActionMetadata;
