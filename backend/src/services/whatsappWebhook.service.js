@@ -45,8 +45,18 @@ async function sendSelectionPrompt(member, chitId, monthIndex, pending) {
   if (pending.length > 1) lines.push('Both contributions — ₹' + pending.reduce((sum, item) => sum + Number(item.amount || 0), 0).toLocaleString('en-IN') + '\nReply: JFC_PAY:' + chitId + ':' + monthIndex + ':BOTH');
   return whatsappProvider.sendText({ to: member.whatsapp_number || member.mobile_number, body: 'Please select which contribution you paid for Month ' + (monthIndex + 1) + ':\n\n' + lines.join('\n\n') + '\n\nAfter selecting, please send the payment screenshot/receipt. The payment will remain pending until admin verification.' });
 }
+async function claimProviderMessage(providerMessageId) {
+  if (!providerMessageId) return true;
+  const { rows } = await query(
+    'SELECT id FROM whatsapp_payment_actions WHERE provider_message_id = $1 LIMIT 1',
+    [providerMessageId]
+  );
+  return rows.length === 0;
+}
+
 async function handleMessage(message) {
   const parsed = parseInboundMessage(message);
+  if (!(await claimProviderMessage(parsed.providerMessageId))) return { handled: true, duplicate: true };
   const member = await findMemberByWhatsApp(parsed.from);
   if (!member) return { handled: false, reason: 'member_not_found' };
 
