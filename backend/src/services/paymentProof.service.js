@@ -45,7 +45,7 @@ async function notifyDrawerOfPayment(chitId, monthIndex, memberId, createdById, 
      FROM chit_month_data md
      WHERE md.chit_id = $6 AND md.month_index = $7
      RETURNING id`,
-    [row.drawn_by_member_id, chitMemberIds, chitMemberIds.length, memberId, row.member_name, chitId, monthIndex]
+    [row.drawn_by_member_id, chitMemberIds, chitService.chitMonthlyPaymentForRound(await chitService.getById(chitId), monthIndex) * chitMemberIds.length, memberId, row.member_name, chitId, monthIndex]
   );
   const confirmationId = confirmationRows[0]?.id || null;
 
