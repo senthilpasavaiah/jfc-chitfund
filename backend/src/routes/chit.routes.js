@@ -59,7 +59,7 @@ router.get('/:id/months/:monthIndex', monthParams, validate, requireChitAccess, 
 router.patch(
   '/:id/months/:monthIndex/payment',
   authorize('ADMIN', 'MANAGER', 'COLLECTOR'),
-  [...monthParams, body('memberId').isUUID()],
+  [...monthParams, body('memberId').isUUID(), body('chitMemberId').optional().isUUID()],
   validate,
   chitController.togglePaid
 );
