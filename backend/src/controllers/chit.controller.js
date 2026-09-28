@@ -70,7 +70,7 @@ async function togglePaid(req, res) {
 }
 
 async function payForMonth(req, res) {
-  await chitService.payForMonth(req.params.id, Number(req.params.monthIndex), req.user.memberId);
+  await chitService.payForMonth(req.params.id, Number(req.params.monthIndex), req.user.memberId, req.body.chitMemberId);
   res.json({ success: true, message: 'Marked as paid.' });
 }
 
