@@ -1,5 +1,6 @@
 const { query, withTransaction } = require('../config/db');
 const ApiError = require('../utils/ApiError');
+const chitService = require('./chit.service');
 
 const ACTIONS = ['NOT_YET', 'WILL_PAY', 'PAY_LATER', 'PAID', 'SELECT_CONTRIBUTIONS'];
 
@@ -10,6 +11,10 @@ async function getPendingContributions(memberId, chitId, monthIndex) {
   );
   const monthData = monthRows[0];
   if (!monthData) throw ApiError.notFound('Chit month not found.');
+
+  const { rows: chitRows } = await query('SELECT * FROM chits WHERE id = $1 LIMIT 1', [chitId]);
+  const chit = chitRows[0];
+  if (!chit) throw ApiError.notFound('Chit not found.');
 
   const { rows } = await query(
     `SELECT cm.id AS chit_member_id, cm.slot_number, cm.member_id,
@@ -37,6 +42,7 @@ async function getPendingContributions(memberId, chitId, monthIndex) {
       .map((row) => ({
         chitMemberId: row.chit_member_id,
         slotNumber: row.slot_number,
+        amount: Number(chitService.chitMonthlyPaymentForRound(chit, monthIndex)),
       })),
   };
 }
