@@ -67,6 +67,14 @@ async function recordAction({
     amount = selected.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   }
 
+  if (providerMessageId) {
+    const { rows: duplicateRows } = await query(
+      'SELECT * FROM whatsapp_payment_actions WHERE provider_message_id = $1 LIMIT 1',
+      [providerMessageId]
+    );
+    if (duplicateRows[0]) return duplicateRows[0];
+  }
+
   if (action === 'PAID' || action === 'SELECT_CONTRIBUTIONS') {
     if (!requested.length) {
       throw ApiError.badRequest('Select the contribution(s) covered by this payment.');
