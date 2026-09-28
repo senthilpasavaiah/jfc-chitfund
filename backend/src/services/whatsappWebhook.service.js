@@ -201,4 +201,4 @@ async function handleWebhookPayload(payload) {
   for (const message of messages) results.push(await handleMessage(message));
   return results;
 }
-module.exports = { verifySignature, handleWebhookPayload, findMemberByWhatsApp };
+module.exports = { verifySignature, handleWebhookPayload, findMemberByWhatsApp, parseAction, parseInboundMessage };
