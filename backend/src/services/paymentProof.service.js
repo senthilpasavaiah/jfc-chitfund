@@ -294,7 +294,8 @@ async function getProofImage(proofId) {
 
 async function getForMonth(chitId, monthIndex, memberId) {
   const { rows } = await query(
-    `SELECT p.id, p.status, p.created_at, p.reviewed_at, p.rejection_reason
+    `SELECT p.id, p.status, p.created_at, p.reviewed_at, p.rejection_reason,
+           p.chit_member_ids
      FROM chit_payment_proofs p
      JOIN chit_month_data cmd ON cmd.id = p.chit_month_data_id
      WHERE cmd.chit_id = $1 AND cmd.month_index = $2 AND p.member_id = $3`,
