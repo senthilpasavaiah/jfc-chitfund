@@ -160,10 +160,10 @@ async function markPaidManually(chitId, monthIndex, memberId, adminUserId, chitM
   // Record a lightweight audit row so this shows up the same way a proof
   // would (status confirmed, but with no image) - keeps the history clean.
   await query(
-    `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, image_data, image_mime_type, submitted_by_id, status, reviewed_by_id, reviewed_at)
-     VALUES ($1,$2,'','application/x-manual-entry',$3,'confirmed',$3,now())
-     ON CONFLICT (chit_month_data_id, member_id) DO UPDATE SET status = 'confirmed', reviewed_by_id = $3, reviewed_at = now()`,
-    [monthData.id, memberId, adminUserId]
+    `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, chit_member_ids, image_data, image_mime_type, submitted_by_id, status, reviewed_by_id, reviewed_at)
+     VALUES ($1,$2,$4,'','application/x-manual-entry',$3,'confirmed',$3,now())
+     ON CONFLICT (chit_month_data_id, member_id) DO UPDATE SET status = 'confirmed', reviewed_by_id = $3, reviewed_at = now(), chit_member_ids = $4`,
+    [monthData.id, memberId, adminUserId, selected]
   );
 }
 
@@ -186,7 +186,13 @@ async function reviewProof(proofId, { decision, reviewerUserId, rejectionReason 
         await chitService.payForMonth(chitId, monthIndex, proof.member_id, chitMemberId);
       }
     } else {
-      await chitService.payForMonth(chitId, monthIndex, proof.member_id);
+      const { rows: slots } = await query(
+        `SELECT id FROM chit_members WHERE chit_id = $1 AND member_id = $2 AND is_active = TRUE`,
+        [chitId, proof.member_id]
+      );
+      for (const slot of slots) {
+        await chitService.payForMonth(chitId, monthIndex, proof.member_id, slot.id);
+      }
     }
     await notifyDrawerOfPayment(chitId, monthIndex, proof.member_id, reviewerUserId, selectedIds);
   } else if (decision === 'reject') {
