@@ -36,6 +36,8 @@ function parseAction(actionId) {
   if (['NOT_YET', 'WILL_PAY', 'PAY_LATER', 'PAID'].includes(upper)) return { action: upper };
   const match = raw.match(/^JFC_PAY:([^:]+):(\d+):(BOTH|[0-9a-f-]+)$/i);
   if (match) return { chitId: match[1], monthIndex: Number(match[2]), selection: match[3] };
+  const drawerMatch = raw.match(/^JFC_DRAWER:(CONFIRM|DECLINE):([^:]+):(\d+):([0-9a-f-]+)$/i);
+  if (drawerMatch) return { drawerAction: drawerMatch[1].toUpperCase(), chitId: drawerMatch[2], monthIndex: Number(drawerMatch[3]), payerMemberId: drawerMatch[4] };
   const contextMatch = raw.match(/^JFC_ACTION:([^:]+):(\d+):(NOT_YET|WILL_PAY|PAY_LATER|PAID)$/i);
   if (contextMatch) return { chitId: contextMatch[1], monthIndex: Number(contextMatch[2]), action: contextMatch[3].toUpperCase() };
   return null;
@@ -59,6 +61,53 @@ async function handleMessage(message) {
   if (!(await claimProviderMessage(parsed.providerMessageId))) return { handled: true, duplicate: true };
   const member = await findMemberByWhatsApp(parsed.from);
   if (!member) return { handled: false, reason: 'member_not_found' };
+
+  const parsedAction = parseAction(parsed.actionId);
+  if (parsedAction?.drawerAction) {
+    const { rows: drawerRows } = await query(
+      `SELECT md.drawn_by_member_id
+       FROM chit_month_data md
+       WHERE md.chit_id = $1 AND md.month_index = $2
+       LIMIT 1`,
+      [parsedAction.chitId, parsedAction.monthIndex]
+    );
+    if (drawerRows[0]?.drawn_by_member_id !== member.id) {
+      return { handled: false, reason: 'drawer_confirmation_not_authorized' };
+    }
+    const { rows: confirmationRows } = await query(
+      `SELECT *
+       FROM whatsapp_payment_actions
+       WHERE member_id = $1
+         AND chit_id = $2
+         AND month_index = $3
+         AND action = 'DRAWER_CONFIRM'
+         AND status = 'OPEN'
+         AND metadata->>'payer_member_id' = $4
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [member.id, parsedAction.chitId, parsedAction.monthIndex, parsedAction.payerMemberId]
+    );
+    const confirmation = confirmationRows[0];
+    if (!confirmation) return { handled: false, reason: 'drawer_confirmation_request_not_found' };
+    const { rows: updatedRows } = await query(
+      `UPDATE whatsapp_payment_actions
+       SET status = 'PROCESSED',
+           action = $2,
+           metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [confirmation.id, parsedAction.drawerAction === 'CONFIRM' ? 'DRAWER_CONFIRM' : 'DRAWER_DECLINE',
+       JSON.stringify({ confirmation_message_id: parsed.providerMessageId, confirmed_at: new Date().toISOString() })]
+    );
+    await whatsappProvider.sendText({
+      to: member.whatsapp_number || member.mobile_number,
+      body: parsedAction.drawerAction === 'CONFIRM'
+        ? 'Payment receipt acknowledgement recorded. The payment remains subject to the portal/admin payment record.'
+        : 'Payment receipt acknowledgement marked as not received. The portal/admin payment record was not changed.'
+    });
+    return { handled: true, action: parsedAction.drawerAction === 'CONFIRM' ? 'DRAWER_CONFIRM' : 'DRAWER_DECLINE', result: updatedRows[0] || confirmation };
+  }
 
   const openPaid = await whatsappPaymentActionService.getLatestOpenPaidAction(member.id);
 
@@ -109,7 +158,6 @@ async function handleMessage(message) {
     return { handled: true, action: 'UTR_RECEIVED', proofId: proof?.id || null };
   }
 
-  const parsedAction = parseAction(parsed.actionId);
   if (!parsedAction) return { handled: false, reason: 'unsupported_action' };
   if (parsedAction.selection) {
     const pendingResult = await whatsappPaymentActionService.listPending(member.id, parsedAction.chitId, parsedAction.monthIndex);
