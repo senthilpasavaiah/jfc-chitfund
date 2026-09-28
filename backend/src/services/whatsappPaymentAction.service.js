@@ -112,14 +112,16 @@ async function listPending(memberId, chitId, monthIndex) {
 module.exports = { ACTIONS, getPendingContributions, recordAction, listPending };
 
 
-async function getLatestOpenPaidAction(memberId) {
+async function getLatestOpenPaidAction(memberId, chitId = null, monthIndex = null) {
   const { rows } = await query(
     `SELECT *
      FROM whatsapp_payment_actions
      WHERE member_id = $1 AND action = 'PAID' AND status = 'OPEN'
+       AND ($2::uuid IS NULL OR chit_id = $2)
+       AND ($3::int IS NULL OR month_index = $3)
      ORDER BY created_at DESC
      LIMIT 1`,
-    [memberId]
+    [memberId, chitId, monthIndex]
   );
   return rows[0] || null;
 }
