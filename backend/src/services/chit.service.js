@@ -714,11 +714,17 @@ async function performShuffle(chitId, monthIndex, memberIds, actingUserId) {
   if (md.drawn_by_member_id) {
     throw ApiError.badRequest('A drawer has already been assigned for this month - shuffle is locked.');
   }
-  if (!memberIds || memberIds.length === 0) {
+  if (!Array.isArray(memberIds) || memberIds.length === 0) {
     throw ApiError.badRequest('Select at least one participant to include in the shuffle.');
   }
 
-  const winnerId = memberIds[Math.floor(Math.random() * memberIds.length)];
+  const uniqueMemberIds = [...new Set(memberIds.filter(Boolean))];
+  const participantMemberIds = new Set((await getParticipants(chitId)).map((p) => p.member_id));
+  if (uniqueMemberIds.some((memberId) => !participantMemberIds.has(memberId))) {
+    throw ApiError.badRequest('Shuffle can include only active participants of this chit.');
+  }
+
+  const winnerId = uniqueMemberIds[Math.floor(Math.random() * uniqueMemberIds.length)];
   await query(`UPDATE chit_month_data SET drawn_by_member_id = $1, shuffled = TRUE WHERE id = $2`, [winnerId, md.id]);
   const winnerName = await getMemberName(winnerId);
 
