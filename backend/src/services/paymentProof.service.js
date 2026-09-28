@@ -78,6 +78,15 @@ async function submitProof({ chitId, monthIndex, memberId, chitMemberIds = [], i
     throw ApiError.badRequest('One or more selected contributions are invalid for this member.');
   }
   const selectedSlotIds = selectedSlots.map((p) => p.id);
+  if (declaredAmount != null) {
+    const expectedPerContribution = Number(monthData?.monthly_payment || 0);
+    const expectedTotal = expectedPerContribution * selectedSlots.length;
+    const declared = Number(declaredAmount);
+    if (!Number.isFinite(declared) || declared <= 0) throw ApiError.badRequest('Declared payment amount must be greater than zero.');
+    if (expectedTotal > 0 && Math.abs(declared - expectedTotal) > 0.01) {
+      throw ApiError.badRequest(`Declared amount ₹${declared.toFixed(2)} does not match the selected ${selectedSlots.length} contribution${selectedSlots.length === 1 ? '' : 's'} total of ₹${expectedTotal.toFixed(2)}.`);
+    }
+  }
   const approxBytes = (imageData.length * 3) / 4;
   if (approxBytes > MAX_IMAGE_BYTES) {
     throw ApiError.badRequest('That image is too large. Please upload a screenshot under 6MB.');
