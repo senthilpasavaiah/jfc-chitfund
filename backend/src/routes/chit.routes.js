@@ -70,7 +70,7 @@ router.post(
   validate,
   chitController.markAllPaid
 );
-router.post('/:id/months/:monthIndex/pay', monthParams, validate, chitController.payForMonth);
+router.post('/:id/months/:monthIndex/pay', [...monthParams, body('memberId').isUUID(), body('chitMemberId').optional().isUUID()], validate, chitController.payForMonth);
 
 router.patch(
   '/:id/months/:monthIndex/draw',
