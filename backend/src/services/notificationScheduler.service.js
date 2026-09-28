@@ -90,7 +90,11 @@ async function runPaymentReminders(now = new Date()) {
        JOIN members m ON m.id = cm.member_id
        LEFT JOIN chit_month_payments cmp
          ON cmp.chit_month_data_id = $1 AND cmp.member_id = cm.member_id
-       WHERE cm.chit_id = $2 AND cm.is_active = TRUE
+       WHERE cm.chit_id = $2
+         AND cm.is_active = TRUE
+         AND cm.member_id IS DISTINCT FROM (
+           SELECT drawn_by_member_id FROM chit_month_data WHERE id = $1
+         )
        ORDER BY m.name`,
       [monthDataId, chit.id]
     );
