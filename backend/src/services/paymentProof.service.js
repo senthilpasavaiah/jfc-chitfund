@@ -170,7 +170,7 @@ async function markPaidManually(chitId, monthIndex, memberId, adminUserId, chitM
   // Record a lightweight audit row so this shows up the same way a proof
   // would (status confirmed, but with no image) - keeps the history clean.
   await query(
-    `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, chit_member_ids, image_data, image_mime_type, submitted_by_id, status, reviewed_by_id, reviewed_at)
+    `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, chit_member_ids, image_data, image_mime_type, submitted_by_id, status, reviewed_by_id, reviewed_at, declared_amount)
      VALUES ($1,$2,$4,'','application/x-manual-entry',$3,'confirmed',$3,now(),$5)
      ON CONFLICT (chit_month_data_id, member_id) DO UPDATE SET status = 'confirmed', reviewed_by_id = $3, reviewed_at = now(), chit_member_ids = $4, declared_amount = $5`,
     [monthData.id, memberId, adminUserId, selected, declaredAmount == null ? null : Number(declaredAmount)]
