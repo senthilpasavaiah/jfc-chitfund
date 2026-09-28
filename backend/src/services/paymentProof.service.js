@@ -17,18 +17,6 @@ async function notifyDrawerOfPayment(chitId, monthIndex, memberId, createdById, 
   const row = rows[0];
   if (!row?.drawn_by_member_id || row.drawn_by_member_id === memberId) return;
 
-  const { rows: existing } = await query(
-    `SELECT 1
-     FROM notifications
-     WHERE member_id = $1
-       AND type = 'PAYMENT_RECEIVED'
-       AND subject = $2
-       AND created_at >= ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date AT TIME ZONE 'Asia/Kolkata')
-     LIMIT 1`,
-    [row.drawn_by_member_id, `${row.ref_number} - Month ${monthIndex + 1} payment received`]
-  );
-  if (existing.length) return;
-
   const { rows: contributionRows } = chitMemberIds.length ? await query(
     `SELECT slot_number FROM chit_members WHERE id = ANY($1::uuid[]) ORDER BY slot_number`,
     [chitMemberIds]
@@ -36,6 +24,13 @@ async function notifyDrawerOfPayment(chitId, monthIndex, memberId, createdById, 
   const contributionLabel = contributionRows.length
     ? contributionRows.map((item) => `Contribution ${item.slot_number}`).join(', ')
     : 'legacy member-level payment';
+
+  const chit = await chitService.getById(chitId);
+  const expectedPerContribution = Number(chitService.chitMonthlyPaymentForRound(chit, monthIndex));
+  const contributionCount = contributionRows.length || (await query(
+    `SELECT COUNT(*)::int AS count FROM chit_members WHERE chit_id = $1 AND member_id = $2 AND is_active = TRUE`,
+    [chitId, memberId]
+  )).rows[0]?.count || 1;
 
   const { rows: confirmationRows } = await query(
     `INSERT INTO whatsapp_payment_actions
@@ -45,7 +40,7 @@ async function notifyDrawerOfPayment(chitId, monthIndex, memberId, createdById, 
      FROM chit_month_data md
      WHERE md.chit_id = $6 AND md.month_index = $7
      RETURNING id`,
-    [row.drawn_by_member_id, chitMemberIds, chitService.chitMonthlyPaymentForRound(await chitService.getById(chitId), monthIndex) * chitMemberIds.length, memberId, row.member_name, chitId, monthIndex]
+    [row.drawn_by_member_id, chitMemberIds, expectedPerContribution * contributionCount, memberId, row.member_name, chitId, monthIndex]
   );
   const confirmationId = confirmationRows[0]?.id || null;
 
