@@ -49,7 +49,7 @@ async function notifyDrawerOfPayment(chitId, monthIndex, memberId, createdById, 
     channel: 'WHATSAPP',
     type: 'PAYMENT_RECEIVED',
     subject: `${row.ref_number} - Month ${monthIndex + 1} payment received`,
-    body: `${row.member_name} has paid the Month ${monthIndex + 1} installment for ${row.ref_number}. ${contributionLabel}. Please confirm the payment received. Reply: JFC_DRAWER:CONFIRM:${chitId}:${monthIndex}:${memberId}`,
+    body: `${row.member_name} has paid the Month ${monthIndex + 1} installment for ${row.ref_number}. ${contributionLabel}. Please confirm the payment received. Reply: JFC_DRAWER:CONFIRM:${chitId}:${monthIndex}:${memberId}:${confirmationId}`,
     createdById,
   });
   return confirmationId;
