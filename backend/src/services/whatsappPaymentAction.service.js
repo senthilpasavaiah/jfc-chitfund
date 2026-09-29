@@ -84,12 +84,24 @@ async function recordAction({
   }
   const requested = [...new Set((Array.isArray(chitMemberIds) ? chitMemberIds : []).filter(Boolean))];
 
+  // SELECT_CONTRIBUTIONS is only the intermediate WhatsApp state that asks
+  // the member which slot(s) the payment covers. The actual selected
+  // contribution IDs are validated when PAID is recorded.
+  if (action === 'SELECT_CONTRIBUTIONS') {
+    if (requested.length) {
+      const allowed = new Set(pending.contributions.map((item) => item.chitMemberId));
+      if (requested.some((id) => !allowed.has(id))) {
+        throw ApiError.badRequest('One or more selected contributions are not currently pending.');
+      }
+    }
+  }
+
   if (action === 'PAID' && amount == null) {
     const selected = pending.contributions.filter((item) => requested.includes(item.chitMemberId));
     amount = selected.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   }
 
-  if (action === 'PAID' || action === 'SELECT_CONTRIBUTIONS') {
+  if (action === 'PAID') {
     if (!requested.length) {
       throw ApiError.badRequest('Select the contribution(s) covered by this payment.');
     }
