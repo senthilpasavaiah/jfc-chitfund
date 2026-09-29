@@ -64,13 +64,13 @@ async function getMonthDetail(req, res) {
 }
 
 async function togglePaid(req, res) {
-  await chitService.togglePaid(req.params.id, Number(req.params.monthIndex), req.body.memberId);
+  await chitService.togglePaid(req.params.id, Number(req.params.monthIndex), req.body.memberId, req.body.chitMemberId);
   await recordAudit({ userId: req.user.id, action: 'CHIT_PAYMENT_TOGGLE', entityType: 'Chit', entityId: req.params.id, metadata: { monthIndex: req.params.monthIndex, memberId: req.body.memberId }, ipAddress: req.ip });
   res.json({ success: true });
 }
 
 async function payForMonth(req, res) {
-  await chitService.payForMonth(req.params.id, Number(req.params.monthIndex), req.user.memberId);
+  await chitService.payForMonth(req.params.id, Number(req.params.monthIndex), req.user.memberId, req.body.chitMemberId);
   res.json({ success: true, message: 'Marked as paid.' });
 }
 

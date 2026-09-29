@@ -150,15 +150,26 @@ async function paymentOverview(filters = {}, includeOptions = true) {
     query(`
       SELECT c.id AS chit_id, c.ref_number, c.name AS chit_name, c.value_lakh,
              c.total_months, c.rate_schedule, c.start_date,
-             cm.member_id, m.name AS member_name, m.mobile_number,
+             cm.id AS chit_member_id, cm.member_id, cm.slot_number,
+             m.name AS member_name, m.mobile_number,
              gs.month_index,
-             COALESCE(cmp.paid, FALSE) AS paid
+             COALESCE(cmp.paid, legacy_cmp.paid, FALSE) AS paid
       FROM chits c
       JOIN chit_members cm ON cm.chit_id = c.id AND cm.is_active = TRUE
       JOIN members m ON m.id = cm.member_id
       CROSS JOIN LATERAL generate_series(0, c.total_months - 1) AS gs(month_index)
       LEFT JOIN chit_month_data cmd ON cmd.chit_id = c.id AND cmd.month_index = gs.month_index
-      LEFT JOIN chit_month_payments cmp ON cmp.chit_month_data_id = cmd.id AND cmp.member_id = cm.member_id
+      LEFT JOIN chit_month_payments cmp ON cmp.chit_month_data_id = cmd.id AND cmp.chit_member_id = cm.id
+      LEFT JOIN LATERAL (
+        SELECT cmp_legacy.paid
+        FROM chit_month_payments cmp_legacy
+        WHERE cmp_legacy.chit_month_data_id = cmd.id
+          AND cmp_legacy.member_id = cm.member_id
+          AND cmp_legacy.chit_member_id IS NULL
+        ORDER BY cmp_legacy.paid DESC
+        LIMIT 1
+      ) legacy_cmp ON TRUE
+      WHERE cmd.drawn_by_member_id IS DISTINCT FROM cm.member_id
       ORDER BY c.start_date DESC NULLS LAST, c.ref_number, gs.month_index, m.name
     `),
   ]);
@@ -196,7 +207,8 @@ async function paymentOverview(filters = {}, includeOptions = true) {
     const paid = r.paid === true;
     const status = statusForPaid(paid, due);
     rows.push({
-      id: `chit-${r.chit_id}-${r.member_id}-${r.month_index}`,
+      id: `chit-${r.chit_id}-${r.chit_member_id}-${r.month_index}`,
+      chitMemberId: r.chit_member_id,
       source: 'chit',
       chitId: r.chit_id,
       chitRef: r.ref_number,
@@ -256,13 +268,24 @@ async function currentPendingSummary() {
     `, [NEW_MANAGEMENT_START_DATE]),
     query(`
       SELECT c.id AS chit_id, c.value_lakh, c.total_months, c.rate_schedule, c.start_date,
-             cm.member_id, gs.month_index, COALESCE(cmp.paid, FALSE) AS paid
+             cm.id AS chit_member_id, cm.member_id, gs.month_index,
+             COALESCE(cmp.paid, legacy_cmp.paid, FALSE) AS paid
       FROM chits c
       JOIN chit_members cm ON cm.chit_id = c.id AND cm.is_active = TRUE
       CROSS JOIN LATERAL generate_series(0, c.total_months - 1) AS gs(month_index)
       LEFT JOIN chit_month_data cmd ON cmd.chit_id = c.id AND cmd.month_index = gs.month_index
-      LEFT JOIN chit_month_payments cmp ON cmp.chit_month_data_id = cmd.id AND cmp.member_id = cm.member_id
-      WHERE c.start_date >= $1
+      LEFT JOIN chit_month_payments cmp ON cmp.chit_month_data_id = cmd.id AND cmp.chit_member_id = cm.id
+      LEFT JOIN LATERAL (
+        SELECT cmp_legacy.paid
+        FROM chit_month_payments cmp_legacy
+        WHERE cmp_legacy.chit_month_data_id = cmd.id
+          AND cmp_legacy.member_id = cm.member_id
+          AND cmp_legacy.chit_member_id IS NULL
+        ORDER BY cmp_legacy.paid DESC
+        LIMIT 1
+      ) legacy_cmp ON TRUE
+      WHERE cmd.drawn_by_member_id IS DISTINCT FROM cm.member_id
+        AND c.start_date >= $1
         AND c.start_date IS NOT NULL
     `, [NEW_MANAGEMENT_START_DATE]),
   ]);

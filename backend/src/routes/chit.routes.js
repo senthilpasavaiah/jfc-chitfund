@@ -59,7 +59,7 @@ router.get('/:id/months/:monthIndex', monthParams, validate, requireChitAccess, 
 router.patch(
   '/:id/months/:monthIndex/payment',
   authorize('ADMIN', 'MANAGER', 'COLLECTOR'),
-  [...monthParams, body('memberId').isUUID()],
+  [...monthParams, body('memberId').isUUID(), body('chitMemberId').optional().isUUID()],
   validate,
   chitController.togglePaid
 );
@@ -70,7 +70,7 @@ router.post(
   validate,
   chitController.markAllPaid
 );
-router.post('/:id/months/:monthIndex/pay', monthParams, validate, chitController.payForMonth);
+router.post('/:id/months/:monthIndex/pay', [...monthParams, body('memberId').isUUID(), body('chitMemberId').optional().isUUID()], validate, chitController.payForMonth);
 
 router.patch(
   '/:id/months/:monthIndex/draw',
@@ -112,6 +112,9 @@ router.post(
     body('imageData').notEmpty().withMessage('Image data is required'),
     body('imageMimeType').matches(/^image\//).withMessage('Must be an image'),
     body('memberId').optional().isUUID(),
+    body('chitMemberIds').optional().isArray(),
+    body('utrNumber').optional({ nullable: true }).isString().trim().isLength({ max: 100 }),
+    body('declaredAmount').optional({ nullable: true }).isFloat({ min: 0 }),
   ],
   validate,
   paymentProofController.submit
@@ -120,7 +123,7 @@ router.get('/:id/months/:monthIndex/payment-proof', monthParams, validate, requi
 router.post(
   '/:id/months/:monthIndex/payment-manual',
   authorize('ADMIN', 'MANAGER', 'COLLECTOR'),
-  [...monthParams, body('memberId').isUUID()],
+  [...monthParams, body('memberId').isUUID(), body('chitMemberIds').optional().isArray(), body('declaredAmount').optional({ nullable: true }).isFloat({ min: 0 })],
   validate,
   paymentProofController.markManual
 );

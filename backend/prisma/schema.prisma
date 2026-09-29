@@ -233,7 +233,9 @@ model ChitMember {
   joinedAt  DateTime @default(now())
   isActive  Boolean  @default(true)
 
-  @@unique([chitId, memberId])
+  // A member may hold multiple contributions/slots in the same chit.
+  // Do not enforce one membership row per member.
+  @@index([chitId, memberId])
   @@index([chitId])
   @@index([memberId])
   @@map("chit_members")

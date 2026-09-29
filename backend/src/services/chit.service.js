@@ -346,15 +346,32 @@ async function getMonthTimeline(chit) {
     const isClub = i === CLUB_SLOT_INDEX;
 
     const paymentsResult = await query(
-      `SELECT p.member_id, p.paid
+      `SELECT p.member_id, p.chit_member_id, p.paid
        FROM chit_month_payments p
-       JOIN chit_members cm ON cm.member_id = p.member_id AND cm.chit_id = $2 AND cm.is_active = TRUE
-       WHERE p.chit_month_data_id = $1`,
+       LEFT JOIN chit_members cm ON cm.id = p.chit_member_id
+       WHERE p.chit_month_data_id = $1
+         AND (
+           (p.chit_member_id IS NOT NULL AND cm.chit_id = $2 AND cm.is_active = TRUE)
+           OR (p.chit_member_id IS NULL AND EXISTS (
+             SELECT 1 FROM chit_members cm2
+             WHERE cm2.chit_id = $2 AND cm2.member_id = p.member_id AND cm2.is_active = TRUE
+           ))
+         )`,
       [md.id, chit.id]
     );
-    const paidMemberIds = new Set(paymentsResult.rows.filter((p) => p.paid).map((p) => p.member_id));
     const participants = await getParticipants(chit.id);
-    const paidCount = participants.reduce((count, participant) => count + (paidMemberIds.has(participant.member_id) ? 1 : 0), 0);
+    const obligatedParticipants = participants.filter(
+      (participant) => participant.member_id !== md.drawn_by_member_id
+    );
+    const paidSlotIds = new Set(
+      paymentsResult.rows.filter((p) => p.paid && p.chit_member_id).map((p) => p.chit_member_id)
+    );
+    const legacyPaidMembers = new Set(
+      paymentsResult.rows.filter((p) => p.paid && !p.chit_member_id).map((p) => p.member_id)
+    );
+    const paidCount = obligatedParticipants.filter(
+      (participant) => paidSlotIds.has(participant.id) || legacyPaidMembers.has(participant.member_id)
+    ).length;
 
     timeline.push({
       monthIndex: i,
@@ -363,7 +380,7 @@ async function getMonthTimeline(chit) {
       drawnByMemberId: isClub ? null : md.drawn_by_member_id,
       shuffled: isClub ? true : md.shuffled,
       paidCount,
-      capacity,
+      capacity: obligatedParticipants.length,
     });
   }
   return timeline;
@@ -376,10 +393,22 @@ async function getMonthDetail(chit, monthIndex) {
   const isClub = monthIndex === CLUB_SLOT_INDEX;
 
   const paymentsResult = await query(
-    `SELECT member_id, paid FROM chit_month_payments WHERE chit_month_data_id = $1`,
+    `SELECT member_id, chit_member_id, paid
+     FROM chit_month_payments
+     WHERE chit_month_data_id = $1`,
     [md.id]
   );
-  const paidByMember = new Map(paymentsResult.rows.map((p) => [p.member_id, p.paid]));
+  const paidBySlot = new Map(
+    paymentsResult.rows
+      .filter((p) => p.chit_member_id)
+      .map((p) => [p.chit_member_id, p.paid])
+  );
+  // Legacy rows were member-level before multiple contributions were enabled.
+  // A legacy paid row is treated as covering that member's existing slots so
+  // historical payment data is not silently lost.
+  const legacyPaidMembers = new Set(
+    paymentsResult.rows.filter((p) => !p.chit_member_id && p.paid).map((p) => p.member_id)
+  );
 
   const requestsResult = await query(
     `SELECT r.member_id, r.type, m.name FROM chit_month_requests r
@@ -390,13 +419,23 @@ async function getMonthDetail(chit, monthIndex) {
   // Build the payment/draw list directly from active chit_members rather than
   // reconstructing it from the fixed slot array. This prevents valid participant
   // rows from disappearing when legacy/duplicate slot data is present.
-  const participants = participantsList.map((p) => ({
-    memberId: p.member_id,
-    name: p.name,
-    slotNumber: p.slot_number,
-    paid: !!paidByMember.get(p.member_id),
-    isDrawer: md.drawn_by_member_id === p.member_id,
-  }));
+  let drawerRowAssigned = false;
+  const participants = participantsList.map((p) => {
+    const paymentRecorded = !!paidBySlot.get(p.id) || legacyPaidMembers.has(p.member_id);
+    const paymentExempt = md.drawn_by_member_id === p.member_id;
+    const isDrawer = paymentExempt && !drawerRowAssigned;
+    if (isDrawer) drawerRowAssigned = true;
+    return {
+      chitMemberId: p.id,
+      memberId: p.member_id,
+      name: p.name,
+      slotNumber: p.slot_number,
+      paid: paymentExempt ? false : paymentRecorded,
+      paymentRecorded,
+      paymentExempt,
+      isDrawer,
+    };
+  });
 
   return {
     monthIndex,
@@ -417,31 +456,53 @@ async function getMonthDetail(chit, monthIndex) {
   };
 }
 
-async function togglePaid(chitId, monthIndex, memberId) {
+async function resolvePaymentSlot(chitId, memberId, chitMemberId) {
+  const participants = await getParticipants(chitId);
+  const matches = participants.filter((p) => p.member_id === memberId);
+  if (chitMemberId) {
+    const slot = matches.find((p) => p.id === chitMemberId);
+    if (!slot) throw ApiError.badRequest('That contribution does not belong to this member in this chit.');
+    return slot;
+  }
+  if (matches.length === 0) throw ApiError.badRequest('Member is not an active participant in this chit.');
+  if (matches.length > 1) {
+    throw ApiError.badRequest('This member has multiple contributions in this chit. Select the specific contribution before marking it paid.');
+  }
+  return matches[0];
+}
+
+async function togglePaid(chitId, monthIndex, memberId, chitMemberId) {
   const chit = await getById(chitId);
   const monthDataByIndex = await ensureMonthData(chit);
   const md = monthDataByIndex.get(monthIndex);
+  assertPaymentRequired(md, memberId);
+  const slot = await resolvePaymentSlot(chitId, memberId, chitMemberId);
 
   const { rows } = await query(
-    `SELECT paid FROM chit_month_payments WHERE chit_month_data_id = $1 AND member_id = $2`,
-    [md.id, memberId]
+    `SELECT paid FROM chit_month_payments
+     WHERE chit_month_data_id = $1 AND chit_member_id = $2`,
+    [md.id, slot.id]
   );
   const current = rows[0]?.paid || false;
   await query(
-    `INSERT INTO chit_month_payments (chit_month_data_id, member_id, paid) VALUES ($1,$2,$3)
-     ON CONFLICT (chit_month_data_id, member_id) DO UPDATE SET paid = $3`,
-    [md.id, memberId, !current]
+    `INSERT INTO chit_month_payments (chit_month_data_id, member_id, chit_member_id, paid)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (chit_month_data_id, chit_member_id) WHERE chit_member_id IS NOT NULL DO UPDATE SET paid = EXCLUDED.paid`,
+    [md.id, memberId, slot.id, !current]
   );
 }
 
-async function payForMonth(chitId, monthIndex, memberId) {
+async function payForMonth(chitId, monthIndex, memberId, chitMemberId) {
   const chit = await getById(chitId);
   const monthDataByIndex = await ensureMonthData(chit);
   const md = monthDataByIndex.get(monthIndex);
+  assertPaymentRequired(md, memberId);
+  const slot = await resolvePaymentSlot(chitId, memberId, chitMemberId);
   await query(
-    `INSERT INTO chit_month_payments (chit_month_data_id, member_id, paid) VALUES ($1,$2,TRUE)
-     ON CONFLICT (chit_month_data_id, member_id) DO UPDATE SET paid = TRUE`,
-    [md.id, memberId]
+    `INSERT INTO chit_month_payments (chit_month_data_id, member_id, chit_member_id, paid)
+     VALUES ($1,$2,$3,TRUE)
+     ON CONFLICT (chit_month_data_id, chit_member_id) WHERE chit_member_id IS NOT NULL DO UPDATE SET paid = TRUE`,
+    [md.id, memberId, slot.id]
   );
 }
 
@@ -458,19 +519,39 @@ async function markAllPaidForMonth(chitId, monthIndex) {
   const chit = await getById(chitId);
   const monthDataByIndex = await ensureMonthData(chit);
   const md = monthDataByIndex.get(monthIndex);
-  const participants = await getParticipants(chitId);
+  const uniqueParticipantIds = [...new Set(
+    (await getParticipants(chitId))
+      .map((participant) => participant.member_id)
+      .filter((memberId) => memberId !== md.drawn_by_member_id)
+  )];
 
   await withTransaction(async (client) => {
-    for (const p of participants) {
-      await client.query(
-        `INSERT INTO chit_month_payments (chit_month_data_id, member_id, paid) VALUES ($1,$2,TRUE)
-         ON CONFLICT (chit_month_data_id, member_id) DO UPDATE SET paid = TRUE`,
-        [md.id, p.member_id]
-      );
+    for (const memberId of uniqueParticipantIds) {
+      const slots = (await getParticipants(chitId)).filter((p) => p.member_id === memberId);
+      for (const slot of slots) {
+        await client.query(
+          `INSERT INTO chit_month_payments (chit_month_data_id, member_id, chit_member_id, paid)
+           VALUES ($1,$2,$3,TRUE)
+           ON CONFLICT (chit_month_data_id, chit_member_id) DO UPDATE SET paid = TRUE`,
+          [md.id, memberId, slot.id]
+        );
+      }
     }
   });
 
-  return { monthIndex, markedCount: participants.length };
+  return { monthIndex, markedCount: uniqueParticipantIds.length };
+}
+
+function assertPaymentRequired(monthData, memberId) {
+  if (monthData.drawn_by_member_id === memberId) {
+    throw ApiError.badRequest('The assigned drawer has no payment obligation for this month.');
+  }
+}
+
+async function assertPaymentRequiredForMonth(chitId, monthIndex, memberId) {
+  const chit = await getById(chitId);
+  const monthDataByIndex = await ensureMonthData(chit);
+  assertPaymentRequired(monthDataByIndex.get(monthIndex), memberId);
 }
 
 async function assignDraw(chitId, monthIndex, memberId, actingUserId, replaceExisting = false) {
@@ -633,11 +714,17 @@ async function performShuffle(chitId, monthIndex, memberIds, actingUserId) {
   if (md.drawn_by_member_id) {
     throw ApiError.badRequest('A drawer has already been assigned for this month - shuffle is locked.');
   }
-  if (!memberIds || memberIds.length === 0) {
+  if (!Array.isArray(memberIds) || memberIds.length === 0) {
     throw ApiError.badRequest('Select at least one participant to include in the shuffle.');
   }
 
-  const winnerId = memberIds[Math.floor(Math.random() * memberIds.length)];
+  const uniqueMemberIds = [...new Set(memberIds.filter(Boolean))];
+  const participantMemberIds = new Set((await getParticipants(chitId)).map((p) => p.member_id));
+  if (uniqueMemberIds.some((memberId) => !participantMemberIds.has(memberId))) {
+    throw ApiError.badRequest('Shuffle can include only active participants of this chit.');
+  }
+
+  const winnerId = uniqueMemberIds[Math.floor(Math.random() * uniqueMemberIds.length)];
   await query(`UPDATE chit_month_data SET drawn_by_member_id = $1, shuffled = TRUE WHERE id = $2`, [winnerId, md.id]);
   const winnerName = await getMemberName(winnerId);
 
@@ -853,7 +940,8 @@ async function getConfirmedChitCollections({ from, to } = {}) {
      JOIN chit_month_data cmd ON cmd.id = cmp.chit_month_data_id
      JOIN chits c ON c.id = cmd.chit_id
      JOIN members m ON m.id = cmp.member_id
-     WHERE cmp.paid = TRUE`
+     WHERE cmp.paid = TRUE
+       AND cmd.drawn_by_member_id IS DISTINCT FROM cmp.member_id`
   );
 
   const rangeStart = from ? new Date(from) : null;
@@ -919,6 +1007,7 @@ module.exports = {
   getMonthDetail,
   togglePaid,
   payForMonth,
+  assertPaymentRequiredForMonth,
   markAllPaidForMonth,
   assignDraw,
   recallDraw,

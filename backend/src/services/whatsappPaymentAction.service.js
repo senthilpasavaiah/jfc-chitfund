@@ -1,0 +1,181 @@
+const { query, withTransaction } = require('../config/db');
+const ApiError = require('../utils/ApiError');
+const chitService = require('./chit.service');
+
+const ACTIONS = ['NOT_YET', 'WILL_PAY', 'PAY_LATER', 'PAID', 'SELECT_CONTRIBUTIONS'];
+
+async function getPendingContributions(memberId, chitId, monthIndex) {
+  const { rows: monthRows } = await query(
+    `SELECT id, drawn_by_member_id
+     FROM chit_month_data
+     WHERE chit_id = $1 AND month_index = $2
+     LIMIT 1`,
+    [chitId, monthIndex]
+  );
+  const monthData = monthRows[0];
+  if (!monthData) throw ApiError.notFound('Chit month not found.');
+
+  // Drawer receives the monthly pot and is never payment-obligated for this month.
+  // Enforce this at the service layer so direct API/WhatsApp calls cannot bypass the UI.
+  if (monthData.drawn_by_member_id === memberId) {
+    return { monthDataId: monthData.id, contributions: [] };
+  }
+
+  const { rows: chitRows } = await query('SELECT * FROM chits WHERE id = $1 LIMIT 1', [chitId]);
+  const chit = chitRows[0];
+  if (!chit) throw ApiError.notFound('Chit not found.');
+
+  const { rows } = await query(
+    `SELECT cm.id AS chit_member_id, cm.slot_number, cm.member_id,
+            COALESCE(cmp.paid, FALSE) AS paid
+     FROM chit_members cm
+     LEFT JOIN chit_month_payments cmp
+       ON cmp.chit_month_data_id = $1 AND cmp.chit_member_id = cm.id
+     WHERE cm.chit_id = $2 AND cm.member_id = $3 AND cm.is_active = TRUE
+     ORDER BY cm.slot_number`,
+    [monthData.id, chitId, memberId]
+  );
+
+  const legacy = await query(
+    `SELECT paid FROM chit_month_payments
+     WHERE chit_month_data_id = $1 AND member_id = $2 AND chit_member_id IS NULL
+     ORDER BY paid DESC LIMIT 1`,
+    [monthData.id, memberId]
+  );
+  const legacyPaid = legacy.rows[0]?.paid === true;
+
+  return {
+    monthDataId: monthData.id,
+    contributions: rows
+      .filter((row) => !row.paid && !legacyPaid)
+      .map((row) => ({
+        chitMemberId: row.chit_member_id,
+        slotNumber: row.slot_number,
+        amount: Number(chitService.chitMonthlyPaymentForRound(chit, monthIndex)),
+      })),
+  };
+}
+
+async function recordAction({
+  memberId,
+  chitId,
+  monthIndex,
+  action,
+  chitMemberIds = [],
+  amount = null,
+  providerMessageId = null,
+  metadata = {},
+}) {
+  if (!ACTIONS.includes(action)) throw ApiError.badRequest('Invalid WhatsApp payment action.');
+
+  // Return the original action before re-checking current payment state so
+  // provider retries remain idempotent even after the payment was confirmed.
+  if (providerMessageId) {
+    const { rows: duplicateRows } = await query(
+      'SELECT * FROM whatsapp_payment_actions WHERE provider_message_id = $1 LIMIT 1',
+      [providerMessageId]
+    );
+    if (duplicateRows[0]) return duplicateRows[0];
+  }
+
+  const pending = await getPendingContributions(memberId, chitId, monthIndex);
+  if (!pending.contributions.length) {
+    throw ApiError.badRequest('No pending payment contribution exists for this member and chit month.');
+  }
+  const requested = [...new Set((Array.isArray(chitMemberIds) ? chitMemberIds : []).filter(Boolean))];
+
+  // SELECT_CONTRIBUTIONS is only the intermediate WhatsApp state that asks
+  // the member which slot(s) the payment covers. The actual selected
+  // contribution IDs are validated when PAID is recorded.
+  if (action === 'SELECT_CONTRIBUTIONS') {
+    if (requested.length) {
+      const allowed = new Set(pending.contributions.map((item) => item.chitMemberId));
+      if (requested.some((id) => !allowed.has(id))) {
+        throw ApiError.badRequest('One or more selected contributions are not currently pending.');
+      }
+    }
+  }
+
+  if (action === 'PAID' && amount == null) {
+    const selected = pending.contributions.filter((item) => requested.includes(item.chitMemberId));
+    amount = selected.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  }
+
+  if (action === 'PAID') {
+    if (!requested.length) {
+      throw ApiError.badRequest('Select the contribution(s) covered by this payment.');
+    }
+    const allowed = new Set(pending.contributions.map((item) => item.chitMemberId));
+    if (requested.some((id) => !allowed.has(id))) {
+      throw ApiError.badRequest('One or more selected contributions are not currently pending.');
+    }
+  }
+
+  const { rows } = await query(
+    `INSERT INTO whatsapp_payment_actions
+      (member_id, chit_id, chit_month_data_id, month_index, chit_member_ids, action, amount, provider_message_id, metadata)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+     RETURNING *`,
+    [
+      memberId,
+      chitId,
+      pending.monthDataId,
+      monthIndex,
+      requested,
+      action,
+      amount,
+      providerMessageId,
+      metadata,
+    ]
+  );
+  return rows[0];
+}
+
+async function listPending(memberId, chitId, monthIndex) {
+  return getPendingContributions(memberId, chitId, monthIndex);
+}
+
+module.exports = { ACTIONS, getPendingContributions, recordAction, listPending };
+
+
+async function getOpenPaidActions(memberId) {
+  const { rows } = await query(
+    `SELECT *
+     FROM whatsapp_payment_actions
+     WHERE member_id = $1 AND action = 'PAID' AND status = 'OPEN'
+     ORDER BY created_at DESC`,
+    [memberId]
+  );
+  return rows;
+}
+
+async function getLatestOpenPaidAction(memberId, chitId = null, monthIndex = null) {
+  const { rows } = await query(
+    `SELECT *
+     FROM whatsapp_payment_actions
+     WHERE member_id = $1 AND action = 'PAID' AND status = 'OPEN'
+       AND ($2::uuid IS NULL OR chit_id = $2)
+       AND ($3::int IS NULL OR month_index = $3)
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [memberId, chitId, monthIndex]
+  );
+  return rows[0] || null;
+}
+
+async function updateActionMetadata(actionId, patch, status = null) {
+  const { rows } = await query(
+    `UPDATE whatsapp_payment_actions
+     SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+         status = COALESCE($3, status),
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [actionId, JSON.stringify(patch || {}), status]
+  );
+  return rows[0] || null;
+}
+
+module.exports.getLatestOpenPaidAction = getLatestOpenPaidAction;
+module.exports.getOpenPaidActions = getOpenPaidActions;
+module.exports.updateActionMetadata = updateActionMetadata;

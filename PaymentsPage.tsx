@@ -20,6 +20,7 @@ interface PaymentRow {
   balance: number;
   status: 'PAID' | 'PARTIAL' | 'PENDING' | 'OVERDUE' | 'UPCOMING';
   installmentId: string | null;
+  chitMemberId: string | null;
 }
 interface PaymentOptions {
   chits: { id: string; ref_number: string; name: string; value_lakh: number; total_months: number; start_date: string | null; status: string }[];
@@ -150,7 +151,10 @@ export default function PaymentsPage() {
     setError(null);
     setRecordingId(row.id);
     try {
-      await client.post(`/chits/${row.chitId}/months/${row.monthIndex}/payment-manual`, { memberId: row.memberId });
+      await client.post(`/chits/${row.chitId}/months/${row.monthIndex}/payment-manual`, {
+        memberId: row.memberId,
+        ...(row.chitMemberId ? { chitMemberIds: [row.chitMemberId] } : {}),
+      });
       await loadPayments();
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Could not update the chit payment.');

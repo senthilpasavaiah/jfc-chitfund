@@ -16,14 +16,62 @@ const ApiError = require('../utils/ApiError');
  * Swap the body of `dispatch()` below for the real provider call and change
  * the inserted `status` from LOGGED to PENDING/SENT/FAILED accordingly.
  */
-async function dispatch({ memberId, channel, type, subject = null, body, createdById }) {
+const whatsappProvider = require('./whatsapp.provider');
+
+async function dispatch({ memberId, channel, type, subject = null, body, createdById, metadata = {} }) {
   const { rows } = await query(
     `INSERT INTO notifications (member_id, channel, type, subject, body, status, created_by_id)
      VALUES ($1, $2, $3, $4, $5, 'LOGGED', $6)
      RETURNING *`,
     [memberId, channel, type, subject, body, createdById]
   );
-  return rows[0];
+  const notification = rows[0];
+
+  // WhatsApp is a real provider only when explicitly enabled through server
+  // environment variables. Until then this remains a database-only intent,
+  // so the live application cannot accidentally send a message.
+  if (channel === 'WHATSAPP' && whatsappProvider.isEnabled()) {
+    try {
+      const { rows: members } = await query(
+        `SELECT id, name, mobile_number, whatsapp_number
+         FROM members
+         WHERE id = $1
+         LIMIT 1`,
+        [memberId]
+      );
+      const member = members[0];
+      const delivery = await whatsappProvider.sendNotification({
+        member,
+        type,
+        subject,
+        body,
+        metadata,
+      });
+
+      if (delivery.sent) {
+        const { rows: updated } = await query(
+          `UPDATE notifications
+           SET status = 'SENT'
+           WHERE id = $1
+           RETURNING *`,
+          [notification.id]
+        );
+        return updated[0] || notification;
+      }
+    } catch (error) {
+      const { rows: updated } = await query(
+        `UPDATE notifications
+         SET status = 'FAILED'
+         WHERE id = $1
+         RETURNING *`,
+        [notification.id]
+      );
+      console.error('[whatsapp] notification delivery failed:', error.message);
+      return updated[0] || notification;
+    }
+  }
+
+  return notification;
 }
 
 async function listForMember(memberId, { limit = 100, offset = 0 } = {}) {

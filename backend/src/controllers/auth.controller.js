@@ -90,14 +90,16 @@ async function changePassword(req, res) {
 async function forgotPassword(req, res) {
   const result = await authService.requestPasswordReset(req.body.phone);
   if (result) {
-    // No live SMS/WhatsApp provider is connected in this build - the reset
-    // "message" is logged to the notifications table instead of sent.
+    // Never persist the raw password-reset token in notifications. The token
+    // is a credential and must not become readable through the notification UI.
+    // Until a real delivery provider is enabled, record only a non-secret audit
+    // notification for the affected member.
     await notificationService.dispatch({
       memberId: result.memberId,
       channel: 'SMS',
       type: 'GENERAL',
       subject: 'Password reset requested',
-      body: `Your password reset token: ${result.rawToken} (valid 30 minutes)`,
+      body: 'A password reset was requested. Use the reset flow to continue. The reset token is not stored in notifications.',
       createdById: result.userId,
     });
   }
