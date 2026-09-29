@@ -25,7 +25,7 @@ function normalisePhone(value) {
   return String(value || '').replace(/[^0-9]/g, '');
 }
 
-async function sendTemplate({ to, templateName, languageCode, bodyParameters = [] }) {
+async function sendTemplate({ to, templateName, languageCode, bodyParameters = [], buttonPayloads = [] }) {
   const config = getConfig();
   assertGraphVersion();
   if (!config.accessToken || !config.phoneNumberId) {
@@ -38,9 +38,28 @@ async function sendTemplate({ to, templateName, languageCode, bodyParameters = [
   const recipient = normalisePhone(to);
   if (!recipient) throw new Error('Recipient does not have a valid WhatsApp number.');
 
-  const components = bodyParameters.length
-    ? [{ type: 'body', parameters: bodyParameters.map((text) => ({ type: 'text', text: String(text) })) }]
-    : [];
+  const components = [];
+  if (bodyParameters.length) {
+    components.push({
+      type: 'body',
+      parameters: bodyParameters.map((text) => ({ type: 'text', text: String(text) })),
+    });
+  }
+
+  // Optional quick-reply buttons. The Meta template must define the same
+  // quick-reply buttons in the same order. Payloads are supplied per reminder
+  // so the webhook receives the exact chit/month context needed to process
+  // the member's reply.
+  buttonPayloads.forEach((payload, index) => {
+    if (payload) {
+      components.push({
+        type: 'button',
+        sub_type: 'quick_reply',
+        index: String(index),
+        parameters: [{ type: 'payload', payload: String(payload) }],
+      });
+    }
+  });
 
   const response = await fetch(
     `${GRAPH_BASE}/${META_GRAPH_VERSION}/${config.phoneNumberId}/messages`,
@@ -76,7 +95,7 @@ async function sendTemplate({ to, templateName, languageCode, bodyParameters = [
  * Sends only when explicitly enabled. With the default configuration
  * (WHATSAPP_ENABLED is not "true") this function performs no network call.
  */
-async function sendNotification({ member, type, subject, body }) {
+async function sendNotification({ member, type, subject, body, metadata = {} }) {
   if (!isEnabled()) return { enabled: false, sent: false };
 
   const to = member?.whatsapp_number || member?.mobile_number;
@@ -96,6 +115,7 @@ async function sendNotification({ member, type, subject, body }) {
       templateName: config.reminderTemplate,
       languageCode: config.templateLanguage,
       bodyParameters: [member.name || '', subject || '', body || ''],
+      buttonPayloads: Array.isArray(metadata.buttonPayloads) ? metadata.buttonPayloads : [],
     });
     return { enabled: true, sent: true, providerMessageId: result?.messages?.[0]?.id || null };
   }
