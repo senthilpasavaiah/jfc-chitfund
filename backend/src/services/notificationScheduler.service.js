@@ -146,13 +146,12 @@ async function runPaymentReminders(now = new Date()) {
         channel: 'WHATSAPP',
         type: 'PAYMENT_REMINDER',
         subject,
-        body: `Your ${monthLabel} payment for ${chit.ref_number} is pending. Pending contributions: ${contributionLines}. Total pending: ₹${pendingTotal.toLocaleString('en-IN')}. If you pay all listed contributions together, one cumulative payment can cover them all; the system will record each contribution separately. Please complete the payment by the 15th.\n\nWhatsApp actions: JFC_ACTION:${chit.id}:${monthIndex}:NOT_YET | JFC_ACTION:${chit.id}:${monthIndex}:WILL_PAY | JFC_ACTION:${chit.id}:${monthIndex}:PAY_LATER | JFC_ACTION:${chit.id}:${monthIndex}:PAID`,
+        body: `Your ${monthLabel} payment for ${chit.ref_number} is pending. Pending contributions: ${contributionLines}. Total pending: ₹${pendingTotal.toLocaleString('en-IN')}. If you pay all listed contributions together, one cumulative payment can cover them all; the system will record each contribution separately. Please complete the payment by the 15th.\n\nWhatsApp actions: use the buttons, or reply PAY_LATER if you need more time.`,
         createdById: adminId,
         metadata: {
           buttonPayloads: [
             `JFC_ACTION:${chit.id}:${monthIndex}:NOT_YET`,
             `JFC_ACTION:${chit.id}:${monthIndex}:WILL_PAY`,
-            `JFC_ACTION:${chit.id}:${monthIndex}:PAY_LATER`,
             `JFC_ACTION:${chit.id}:${monthIndex}:PAID`,
           ],
         },
