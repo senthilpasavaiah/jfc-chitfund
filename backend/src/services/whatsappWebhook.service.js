@@ -170,7 +170,7 @@ async function handleMessage(message) {
   const utrMatch = String(parsed.actionId || '').match(/^UTR[:\s-]+(.+)$/i);
   if (utrMatch && openPaid) {
     const utr = utrMatch[1].trim().slice(0, 100);
-    const proof = await paymentProofService.attachUtrToPendingProof(member.id, openPaid.chit_id, openPaid.month_index, utr);
+    const proof = await paymentProofService.attachUtrToPendingProof(member.id, openPaid.chit_id, openPaid.month_index, utr, Array.isArray(openPaid.chit_member_ids) ? openPaid.chit_member_ids : []);
     await whatsappPaymentActionService.updateActionMetadata(openPaid.id, { utrNumber: utr, proofId: proof?.id || null });
     await whatsappProvider.sendText({
       to: member.whatsapp_number || member.mobile_number,
