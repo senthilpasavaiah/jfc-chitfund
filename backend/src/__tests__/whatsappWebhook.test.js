@@ -19,6 +19,16 @@ describe('WhatsApp webhook parsing', () => {
     });
   });
 
+  test('parses drawer confirmation id when supplied', () => {
+    expect(parseAction('JFC_DRAWER:CONFIRM:abc-123:4:123e4567-e89b-12d3-a456-426614174001:123e4567-e89b-12d3-a456-426614174002')).toEqual({
+      drawerAction: 'CONFIRM',
+      chitId: 'abc-123',
+      monthIndex: 4,
+      payerMemberId: '123e4567-e89b-12d3-a456-426614174001',
+      confirmationId: '123e4567-e89b-12d3-a456-426614174002',
+    });
+  });
+
   test('parses Meta template quick-reply payload as the contextual action', () => {
     const message = parseInboundMessage({
       id: 'wamid.button',
