@@ -542,7 +542,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
                       </label>
                     )}
 
-                    {markingMemberId === p.memberId && !p.paid && !p.paymentExempt && (
+                    {markingMemberId === p.chitMemberId && !p.paid && !p.paymentExempt && (
                       <div className="w-full bg-paper rounded-md p-2 space-y-1.5">
                         <p className="text-[10px] text-ink-muted">Proof needed to mark paid:</p>
                         <label className="block text-xs bg-navy text-white rounded px-2 py-1 cursor-pointer text-center">
