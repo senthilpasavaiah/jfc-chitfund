@@ -127,39 +127,26 @@ async function submitProof({ chitId, monthIndex, memberId, chitMemberIds = [], i
     throw ApiError.badRequest('That image is too large. Please upload a screenshot under 6MB.');
   }
 
-  const { rows: existingRows } = await query(
-    `SELECT * FROM chit_payment_proofs WHERE chit_month_data_id = $1 AND member_id = $2`,
+  const { rows: pendingRows } = await query(
+    `SELECT id FROM chit_payment_proofs
+     WHERE chit_month_data_id = $1 AND member_id = $2 AND status = 'pending'
+     ORDER BY created_at DESC LIMIT 1`,
     [monthData.id, memberId]
   );
-  const existing = existingRows[0];
-
-  if (existing && existing.status === 'confirmed') {
-    throw ApiError.conflict('This month is already confirmed as paid. You can\'t submit another payment for it.');
-  }
-  if (existing && existing.status === 'pending') {
-    throw ApiError.conflict('You\'ve already submitted proof for this month and it\'s awaiting admin review. Please wait for confirmation before submitting again.');
+  if (pendingRows[0]) {
+    throw ApiError.conflict('You\'ve already submitted proof for this month and it\'s awaiting admin review. Please wait for confirmation before submitting another proof.');
   }
 
+  // Confirmed/rejected proofs do not block a new proof when other contribution
+  // slots are still pending. The selected slot payment state above is the
+  // authoritative duplicate check.
   const status = autoConfirm ? 'confirmed' : 'pending';
-  let proof;
-  if (existing) {
-    const { rows } = await query(
-      `UPDATE chit_payment_proofs
-       SET image_data = $1, image_mime_type = $2, status = $3, submitted_by_id = $4,
-           reviewed_by_id = $5, reviewed_at = $6, rejection_reason = NULL,
-           chit_member_ids = $7, utr_number = $8, declared_amount = $9, created_at = now()
-       WHERE id = $10 RETURNING *`,
-      [imageData, imageMimeType, status, submittedById, autoConfirm ? submittedById : null, autoConfirm ? new Date() : null, selectedSlotIds, utrNumber || null, declaredAmount == null ? null : Number(declaredAmount), existing.id]
-    );
-    proof = rows[0];
-  } else {
-    const { rows } = await query(
-      `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, chit_member_ids, image_data, image_mime_type, submitted_by_id, status, reviewed_by_id, reviewed_at, utr_number, declared_amount)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [monthData.id, memberId, selectedSlotIds, imageData, imageMimeType, submittedById, status, autoConfirm ? submittedById : null, autoConfirm ? new Date() : null, utrNumber || null, declaredAmount == null ? null : Number(declaredAmount)]
-    );
-    proof = rows[0];
-  }
+  const { rows: insertedRows } = await query(
+    `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, chit_member_ids, image_data, image_mime_type, submitted_by_id, status, reviewed_by_id, reviewed_at, utr_number, declared_amount)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+    [monthData.id, memberId, selectedSlotIds, imageData, imageMimeType, submittedById, status, autoConfirm ? submittedById : null, autoConfirm ? new Date() : null, utrNumber || null, declaredAmount == null ? null : Number(declaredAmount)]
+  );
+  const proof = insertedRows[0];
 
   if (autoConfirm) {
     for (const chitMemberId of selectedSlotIds) {
