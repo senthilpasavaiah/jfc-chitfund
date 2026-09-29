@@ -19,6 +19,18 @@ describe('WhatsApp webhook parsing', () => {
     });
   });
 
+  test('parses Meta template quick-reply payload as the contextual action', () => {
+    const message = parseInboundMessage({
+      id: 'wamid.button',
+      from: '919999999999',
+      button: {
+        text: 'Paid',
+        payload: 'JFC_ACTION:abc-123:4:PAID',
+      },
+    });
+    expect(message.actionId).toBe('JFC_ACTION:abc-123:4:PAID');
+  });
+
   test('parses UTR as plain text', () => {
     const message = parseInboundMessage({
       id: 'wamid.test',
