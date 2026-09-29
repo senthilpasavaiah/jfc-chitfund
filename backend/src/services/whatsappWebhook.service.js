@@ -19,7 +19,7 @@ async function findMemberByWhatsApp(waId) {
   const normalized = normalisePhone(waId);
   if (!normalized) return null;
   const { rows } = await query(
-    "SELECT id, user_id, name, mobile_number, whatsapp_number FROM members WHERE regexp_replace(COALESCE(whatsapp_number, mobile_number, ''), '[^0-9]', '', 'g') = $1 ORDER BY id LIMIT 2",
+    "SELECT id, user_id, name, mobile_number, whatsapp_number FROM members WHERE regexp_replace(COALESCE(whatsapp_number, ''), '[^0-9]', '', 'g') = $1 OR regexp_replace(COALESCE(mobile_number, ''), '[^0-9]', '', 'g') = $1 ORDER BY id LIMIT 2",
     [normalized]
   );
   if (rows.length !== 1) return null;
