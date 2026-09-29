@@ -48,7 +48,11 @@ function parseAction(actionId) {
   const match = raw.match(/^JFC_PAY:([^:]+):(\d+):(BOTH|[0-9a-f-]+)$/i);
   if (match) return { chitId: match[1], monthIndex: Number(match[2]), selection: match[3] };
   const drawerMatch = raw.match(/^JFC_DRAWER:(CONFIRM|DECLINE):([^:]+):(\d+):([0-9a-f-]+)(?::([0-9a-f-]+))?$/i);
-  if (drawerMatch) return { drawerAction: drawerMatch[1].toUpperCase(), chitId: drawerMatch[2], monthIndex: Number(drawerMatch[3]), payerMemberId: drawerMatch[4], confirmationId: drawerMatch[5] || null };
+  if (drawerMatch) {
+    const result = { drawerAction: drawerMatch[1].toUpperCase(), chitId: drawerMatch[2], monthIndex: Number(drawerMatch[3]), payerMemberId: drawerMatch[4] };
+    if (drawerMatch[5]) result.confirmationId = drawerMatch[5];
+    return result;
+  }
   const contextMatch = raw.match(/^JFC_ACTION:([^:]+):(\d+):(NOT_YET|WILL_PAY|PAY_LATER|PAID)$/i);
   if (contextMatch) return { chitId: contextMatch[1], monthIndex: Number(contextMatch[2]), action: contextMatch[3].toUpperCase() };
   return null;
