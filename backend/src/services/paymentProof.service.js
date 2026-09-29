@@ -128,10 +128,14 @@ async function submitProof({ chitId, monthIndex, memberId, chitMemberIds = [], i
   }
 
   const { rows: pendingRows } = await query(
-    `SELECT id FROM chit_payment_proofs
+    `SELECT id, chit_member_ids FROM chit_payment_proofs
      WHERE chit_month_data_id = $1 AND member_id = $2 AND status = 'pending'
+       AND (
+         COALESCE(cardinality(chit_member_ids), 0) = 0
+         OR chit_member_ids && $3::uuid[]
+       )
      ORDER BY created_at DESC LIMIT 1`,
-    [monthData.id, memberId]
+    [monthData.id, memberId, selectedSlotIds]
   );
   if (pendingRows[0]) {
     throw ApiError.conflict('You\'ve already submitted proof for this month and it\'s awaiting admin review. Please wait for confirmation before submitting another proof.');
@@ -202,8 +206,7 @@ async function markPaidManually(chitId, monthIndex, memberId, adminUserId, chitM
   // would (status confirmed, but with no image) - keeps the history clean.
   await query(
     `INSERT INTO chit_payment_proofs (chit_month_data_id, member_id, chit_member_ids, image_data, image_mime_type, submitted_by_id, status, reviewed_by_id, reviewed_at, declared_amount)
-     VALUES ($1,$2,$4,'','application/x-manual-entry',$3,'confirmed',$3,now(),$5)
-     ON CONFLICT (chit_month_data_id, member_id) DO UPDATE SET status = 'confirmed', reviewed_by_id = $3, reviewed_at = now(), chit_member_ids = $4, declared_amount = $5`,
+     VALUES ($1,$2,$4,'','application/x-manual-entry',$3,'confirmed',$3,now(),$5)`,
     [monthData.id, memberId, adminUserId, selected, declaredAmount == null ? null : Number(declaredAmount)]
   );
 }
@@ -293,15 +296,19 @@ async function getForMonth(chitId, monthIndex, memberId) {
   return rows[0] || null;
 }
 
-async function attachUtrToPendingProof(memberId, chitId, monthIndex, utrNumber) {
+async function attachUtrToPendingProof(memberId, chitId, monthIndex, utrNumber, chitMemberIds = []) {
   const { rows } = await query(
     `SELECT p.id
      FROM chit_payment_proofs p
      JOIN chit_month_data md ON md.id = p.chit_month_data_id
      WHERE p.member_id = $1 AND md.chit_id = $2 AND md.month_index = $3 AND p.status = 'pending'
+       AND (
+         COALESCE(cardinality(p.chit_member_ids), 0) = 0
+         OR p.chit_member_ids && $4::uuid[]
+       )
      ORDER BY p.created_at DESC
      LIMIT 1`,
-    [memberId, chitId, monthIndex]
+    [memberId, chitId, monthIndex, Array.isArray(chitMemberIds) ? chitMemberIds : []]
   );
   if (!rows[0]) return null;
   const { rows: updated } = await query(
