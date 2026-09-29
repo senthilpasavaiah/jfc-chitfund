@@ -18,7 +18,7 @@ const ApiError = require('../utils/ApiError');
  */
 const whatsappProvider = require('./whatsapp.provider');
 
-async function dispatch({ memberId, channel, type, subject = null, body, createdById }) {
+async function dispatch({ memberId, channel, type, subject = null, body, createdById, metadata = {} }) {
   const { rows } = await query(
     `INSERT INTO notifications (member_id, channel, type, subject, body, status, created_by_id)
      VALUES ($1, $2, $3, $4, $5, 'LOGGED', $6)
@@ -45,6 +45,7 @@ async function dispatch({ memberId, channel, type, subject = null, body, created
         type,
         subject,
         body,
+        metadata,
       });
 
       if (delivery.sent) {
