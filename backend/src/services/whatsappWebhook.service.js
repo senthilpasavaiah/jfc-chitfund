@@ -28,8 +28,18 @@ async function findMemberByWhatsApp(waId) {
 function parseInboundMessage(message) {
   const interactive = message?.interactive;
   const buttonId = interactive?.button_reply?.id || interactive?.list_reply?.id || '';
+  // Meta Cloud API sends template quick-reply responses as a top-level
+  // "button" message with the developer-defined payload. Read that payload
+  // first so contextual JFC_ACTION values survive the WhatsApp round trip.
+  const templateButtonPayload = message?.button?.payload || '';
+  const templateButtonText = message?.button?.text || '';
   const text = String(message?.text?.body || '').trim();
-  return { providerMessageId: message?.id || null, from: message?.from || '', actionId: buttonId || text, image: message?.image || null };
+  return {
+    providerMessageId: message?.id || null,
+    from: message?.from || '',
+    actionId: templateButtonPayload || buttonId || text || templateButtonText,
+    image: message?.image || null,
+  };
 }
 function parseAction(actionId) {
   const raw = String(actionId || '').trim();
