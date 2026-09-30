@@ -51,6 +51,9 @@ async function notifyDrawerOfPayment(chitId, monthIndex, memberId, createdById, 
     subject: `${row.ref_number} - Month ${monthIndex + 1} payment received`,
     body: `${row.member_name} has paid the Month ${monthIndex + 1} installment for ${row.ref_number}. ${contributionLabel}. Please confirm the payment received. Reply: JFC_DRAWER:CONFIRM:${chitId}:${monthIndex}:${memberId}:${confirmationId}`,
     createdById,
+    metadata: {
+      bodyParameters: [row.drawn_by_member_id ? (await query('SELECT name FROM members WHERE id = $1 LIMIT 1', [row.drawn_by_member_id])).rows[0]?.name || '' : '', row.member_name || '', row.ref_number || '', `Month ${monthIndex + 1}`, (expectedPerContribution * contributionCount).toLocaleString('en-IN')],
+    },
   });
   return confirmationId;
 }
