@@ -7,10 +7,11 @@ const MAX_IMAGE_BYTES = 6 * 1024 * 1024; // ~6MB raw, comfortably under the 8mb 
 
 async function notifyDrawerOfPayment(chitId, monthIndex, memberId, createdById, chitMemberIds = []) {
   const { rows } = await query(
-    `SELECT md.drawn_by_member_id, c.ref_number, m.name AS member_name
+    `SELECT md.drawn_by_member_id, c.ref_number, m.name AS member_name, drawer.name AS drawer_name
      FROM chit_month_data md
      JOIN chits c ON c.id = md.chit_id
      JOIN members m ON m.id = $3
+     LEFT JOIN members drawer ON drawer.id = md.drawn_by_member_id
      WHERE md.chit_id = $1 AND md.month_index = $2`,
     [chitId, monthIndex, memberId]
   );
@@ -51,6 +52,9 @@ async function notifyDrawerOfPayment(chitId, monthIndex, memberId, createdById, 
     subject: `${row.ref_number} - Month ${monthIndex + 1} payment received`,
     body: `${row.member_name} has paid the Month ${monthIndex + 1} installment for ${row.ref_number}. ${contributionLabel}. Please confirm the payment received. Reply: JFC_DRAWER:CONFIRM:${chitId}:${monthIndex}:${memberId}:${confirmationId}`,
     createdById,
+    metadata: {
+      bodyParameters: [row.drawer_name || '', row.member_name || '', row.ref_number || '', `Month ${monthIndex + 1}`, (expectedPerContribution * contributionCount).toLocaleString('en-IN')],
+    },
   });
   return confirmationId;
 }

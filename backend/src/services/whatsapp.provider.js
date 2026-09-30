@@ -114,7 +114,7 @@ async function sendNotification({ member, type, subject, body, metadata = {} }) 
       to,
       templateName: config.reminderTemplate,
       languageCode: config.templateLanguage,
-      bodyParameters: [member.name || '', subject || '', body || ''],
+      bodyParameters: Array.isArray(metadata.bodyParameters) ? metadata.bodyParameters : [member.name || '', body || ''],
       buttonPayloads: Array.isArray(metadata.buttonPayloads) ? metadata.buttonPayloads : [],
     });
     return { enabled: true, sent: true, providerMessageId: result?.messages?.[0]?.id || null };
@@ -128,7 +128,7 @@ async function sendNotification({ member, type, subject, body, metadata = {} }) 
       to,
       templateName: config.drawerPaymentTemplate,
       languageCode: config.templateLanguage,
-      bodyParameters: [member.name || '', subject || '', body || ''],
+      bodyParameters: Array.isArray(metadata.bodyParameters) ? metadata.bodyParameters : [member.name || '', body || ''],
     });
     return { enabled: true, sent: true, providerMessageId: result?.messages?.[0]?.id || null };
   }
