@@ -66,7 +66,7 @@ function humanDetails(row: ActivityRow) {
   const amount = m.amount;
   const page = m.path;
   const duration = m.durationMs;
-  const parts = [page ? `Page: ${page}` : '', duration ? `Time: ${durationLabel(duration)}` : '', [name ? `Member: ${name}` : '', chit ? `Chit: ${chit}` : '', month ? `Month: ${month}` : '', amount !== undefined ? `Amount: ₹${amount}` : ''].filter(Boolean);
+  const parts = [page ? `Page: ${page}` : '', duration ? `Time: ${durationLabel(duration)}` : '', name ? `Member: ${name}` : '', chit ? `Chit: ${chit}` : '', month ? `Month: ${month}` : '', amount !== undefined ? `Amount: ₹${amount}` : ''].filter(Boolean);
   return parts.length ? parts.join(' • ') : 'No additional summary was recorded.';
 }
 function getBeforeAfter(metadata: Record<string, unknown> | null) {
