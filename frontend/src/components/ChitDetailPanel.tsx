@@ -581,7 +581,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
 
       <div
         className="grid transition-all duration-300 ease-out"
-        style={{ gridTemplateRows: isAdmin && panel === 'ledger' && ledger ? '1fr' : '0fr' }}
+        style={{ gridTemplateRows: isAdmin && panel === 'ledger' ? '1fr' : '0fr' }}
       >
         <div className="overflow-hidden min-h-0">
           {isAdmin && ledger && (
