@@ -24,9 +24,28 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
+function reportClientError(error: any) {
+  try {
+    const url = error?.config?.url || '';
+    if (!url || url.includes('/activity-tracking') || url.includes('/auth/')) return;
+    const sessionId = sessionStorage.getItem('jfc_activity_session_id') || '';
+    client.post('/activity-tracking/error', {
+      path: window.location.pathname + window.location.search,
+      sessionId,
+      source: 'api',
+      message: error?.response?.data?.message || error?.message || 'Request failed',
+      status: error?.response?.status || 0,
+      method: error?.config?.method?.toUpperCase() || '',
+      endpoint: url,
+      userAgent: navigator.userAgent,
+    }).catch(() => {});
+  } catch {}
+}
+
 client.interceptors.response.use(
   (res) => res,
   async (error) => {
+    reportClientError(error);
     const original = error.config;
     if (error.response?.status === 401 && !original._retry && !original.url?.includes('/auth/')) {
       original._retry = true;
