@@ -27,7 +27,7 @@ client.interceptors.request.use((config) => {
 function reportClientError(error: any) {
   try {
     const url = error?.config?.url || '';
-    if (!url || url.includes('/activity-tracking') || url.includes('/auth/')) return;
+    if (!url || url.includes('/activity-tracking') || url.includes('/auth/') || error?.response?.status === 401) return;
     const sessionId = sessionStorage.getItem('jfc_activity_session_id') || '';
     client.post('/activity-tracking/error', {
       path: window.location.pathname + window.location.search,
