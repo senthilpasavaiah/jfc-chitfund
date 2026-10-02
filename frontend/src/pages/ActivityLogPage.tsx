@@ -30,6 +30,7 @@ const ACTION_LABELS: Record<string, string> = {
   DONATION_ADD: 'Added donation', DONATION_UPDATE: 'Updated donation', SANTHA_ADD: 'Added Santha', SANTHA_UPDATE: 'Updated Santha', SETTLEMENT_YEAR_ADD: 'Added settlement year',
   NOTIFICATION_CREATE: 'Created notification', NOTIFICATION_DELETE: 'Deleted notification', DOCUMENT_UPLOAD: 'Uploaded document', DOCUMENT_DELETE: 'Deleted document',
   ADMIN_GRANT: 'Granted admin access', ADMIN_REVOKE: 'Revoked admin access',
+  PAGE_VIEW: 'Viewed page',
 };
 
 function actionLabel(action: string) {
@@ -55,13 +56,17 @@ function riskClass(risk: string) {
 function metadataObject(metadata: Record<string, unknown> | null) {
   return metadata && typeof metadata === 'object' ? metadata : {};
 }
+function durationLabel(ms: unknown) { const n = Math.max(0, Number(ms) || 0); if (n < 1000) return '—'; const total = Math.round(n / 1000); const m = Math.floor(total / 60); const s = total % 60; if (m >= 60) return `${Math.floor(m / 60)}h ${m % 60}m`; return m ? `${m}m ${s}s` : `${s}s`; }
+function pagePath(row: ActivityRow) { const m = metadataObject(row.metadata); return String(m.path || row.entity_id || '—'); }
 function humanDetails(row: ActivityRow) {
   const m = metadataObject(row.metadata);
   const name = m.memberName || m.member_name || m.name;
   const chit = m.chitName || m.chit_name;
   const month = m.monthNumber || m.month_number;
   const amount = m.amount;
-  const parts = [name ? `Member: ${name}` : '', chit ? `Chit: ${chit}` : '', month ? `Month: ${month}` : '', amount !== undefined ? `Amount: ₹${amount}` : ''].filter(Boolean);
+  const page = m.path;
+  const duration = m.durationMs;
+  const parts = [page ? `Page: ${page}` : '', duration ? `Time: ${durationLabel(duration)}` : '', [name ? `Member: ${name}` : '', chit ? `Chit: ${chit}` : '', month ? `Month: ${month}` : '', amount !== undefined ? `Amount: ₹${amount}` : ''].filter(Boolean);
   return parts.length ? parts.join(' • ') : 'No additional summary was recorded.';
 }
 function getBeforeAfter(metadata: Record<string, unknown> | null) {
@@ -109,8 +114,8 @@ export default function ActivityLogPage() {
   }
 
   function exportCsv() {
-    const header = ['Date & Time', 'User', 'Action', 'Module', 'Record ID', 'IP Address', 'Details'];
-    const lines = rows.map((r) => [formatDate(r.created_at), r.actor_name || r.actor_phone || 'Unknown', actionLabel(r.action), prettyModule(r.entity_type), r.entity_id || '', r.ip_address || '', r.metadata ? JSON.stringify(r.metadata) : ''].map(escapeCsv).join(','));
+    const header = ['Date & Time', 'User', 'Action', 'Module', 'Page', 'Time Spent', 'Record ID', 'IP Address', 'Details'];
+    const lines = rows.map((r) => [formatDate(r.created_at), r.actor_name || r.actor_phone || 'Unknown', actionLabel(r.action), prettyModule(r.entity_type), pagePath(r), durationLabel(metadataObject(r.metadata).durationMs), r.entity_id || '', r.ip_address || '', r.metadata ? JSON.stringify(r.metadata) : ''].map(escapeCsv).join(','));
     const blob = new Blob([[header.map(escapeCsv).join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `jfc-activity-log-${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(url);
   }
@@ -141,8 +146,8 @@ export default function ActivityLogPage() {
       {error && <div className="ledger-card p-4 text-sm text-danger">{error}</div>}
       <div className="ledger-card overflow-hidden">
         <div className="table-scroll">
-          <table className="w-full text-sm min-w-[1080px]"><thead><tr className="border-b border-line bg-paper text-left text-xs uppercase tracking-wide text-ink-muted"><th className="px-4 py-3">Date & Time</th><th className="px-4 py-3">User</th><th className="px-4 py-3">Activity</th><th className="px-4 py-3">Module</th><th className="px-4 py-3">Risk</th><th className="px-4 py-3">Record</th><th className="px-4 py-3">IP</th><th className="px-4 py-3 text-right">View</th></tr></thead>
-            <tbody>{loading ? <tr><td colSpan={8} className="px-4 py-10 text-center text-ink-muted">Loading activity...</td></tr> : rows.length === 0 ? <tr><td colSpan={8} className="px-4 py-10 text-center text-ink-muted">No activity found for the selected filters.</td></tr> : rows.map((r) => <tr key={r.id} className="border-b border-line last:border-0 hover:bg-paper/70"><td className="px-4 py-3 whitespace-nowrap font-tabular text-xs">{formatDate(r.created_at)}</td><td className="px-4 py-3"><div className="font-semibold">{r.actor_name || r.actor_phone || 'System'}</div><div className="text-xs text-ink-muted">{r.actor_role || ''}</div></td><td className="px-4 py-3 font-medium">{actionLabel(r.action)}</td><td className="px-4 py-3">{prettyModule(r.entity_type)}</td><td className="px-4 py-3"><span className={`inline-flex px-2 py-0.5 rounded-full border text-[11px] font-semibold ${riskClass(riskFor(r.action))}`}>{riskFor(r.action)}</span></td><td className="px-4 py-3 font-tabular text-xs text-ink-muted max-w-[180px] truncate" title={r.entity_id || ''}>{r.entity_id || '—'}</td><td className="px-4 py-3 font-tabular text-xs">{r.ip_address || '—'}</td><td className="px-4 py-3 text-right"><button onClick={() => setSelected(r)} className="text-navy font-semibold hover:underline cursor-pointer">Details</button></td></tr>)}</tbody>
+          <table className="w-full text-sm min-w-[1080px]"><thead><tr className="border-b border-line bg-paper text-left text-xs uppercase tracking-wide text-ink-muted"><th className="px-4 py-3">Date & Time</th><th className="px-4 py-3">User</th><th className="px-4 py-3">Activity</th><th className="px-4 py-3">Module</th><th className="px-4 py-3">Page</th><th className="px-4 py-3">Time</th><th className="px-4 py-3">Risk</th><th className="px-4 py-3">Record</th><th className="px-4 py-3">IP</th><th className="px-4 py-3 text-right">View</th></tr></thead>
+            <tbody>{loading ? <tr><td colSpan={10} className="px-4 py-10 text-center text-ink-muted">Loading activity...</td></tr> : rows.length === 0 ? <tr><td colSpan={10} className="px-4 py-10 text-center text-ink-muted">No activity found for the selected filters.</td></tr> : rows.map((r) => <tr key={r.id} className="border-b border-line last:border-0 hover:bg-paper/70"><td className="px-4 py-3 whitespace-nowrap font-tabular text-xs">{formatDate(r.created_at)}</td><td className="px-4 py-3"><div className="font-semibold">{r.actor_name || r.actor_phone || 'System'}</div><div className="text-xs text-ink-muted">{r.actor_role || ''}</div></td><td className="px-4 py-3 font-medium">{actionLabel(r.action)}</td><td className="px-4 py-3">{prettyModule(r.entity_type)}</td><td className="px-4 py-3 max-w-[220px] truncate text-xs" title={pagePath(r)}>{pagePath(r)}</td><td className="px-4 py-3 text-xs whitespace-nowrap">{durationLabel(metadataObject(r.metadata).durationMs)}</td><td className="px-4 py-3"><span className={`inline-flex px-2 py-0.5 rounded-full border text-[11px] font-semibold ${riskClass(riskFor(r.action))}`}>{riskFor(r.action)}</span></td><td className="px-4 py-3 font-tabular text-xs text-ink-muted max-w-[180px] truncate" title={r.entity_id || ''}>{r.entity_id || '—'}</td><td className="px-4 py-3 font-tabular text-xs">{r.ip_address || '—'}</td><td className="px-4 py-3 text-right"><button onClick={() => setSelected(r)} className="text-navy font-semibold hover:underline cursor-pointer">Details</button></td></tr>)}</tbody>
           </table>
         </div>
       </div>
