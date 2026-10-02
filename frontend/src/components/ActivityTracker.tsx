@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import client from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 function getSessionId() {
   const key = 'jfc_activity_session_id';
@@ -14,12 +15,14 @@ function getSessionId() {
 
 export default function ActivityTracker() {
   const location = useLocation();
+  const { user, loading } = useAuth();
   const activityId = useRef<string | null>(null);
   const startedAt = useRef<number>(Date.now());
   const visibleStartedAt = useRef<number>(document.visibilityState === 'visible' ? Date.now() : 0);
   const accumulatedMs = useRef<number>(0);
 
   useEffect(() => {
+    if (loading || !user) return undefined;
     let cancelled = false;
     const path = location.pathname + location.search;
     const sessionId = getSessionId();
