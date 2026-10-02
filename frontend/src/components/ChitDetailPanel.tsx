@@ -112,8 +112,14 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
   }, [monthDetail, isAdmin, user?.memberId]);
 
   async function loadLedger() {
-    const res = await client.get(`/chits/${id}/ledger`);
-    setLedger(res.data.data);
+    try {
+      const res = await client.get(`/chits/${id}/ledger`);
+      setLedger(res.data.data);
+      setError(null);
+    } catch (err: any) {
+      setLedger(null);
+      setError(err?.response?.data?.message || 'Could not load Income & Expenses for this chit.');
+    }
   }
 
   async function loadPendingProofs() {
@@ -575,7 +581,7 @@ export default function ChitDetailPanel({ chitId, onDeleted, onRequestClose }: C
 
       <div
         className="grid transition-all duration-300 ease-out"
-        style={{ gridTemplateRows: isAdmin && panel === 'ledger' && ledger ? '1fr' : '0fr' }}
+        style={{ gridTemplateRows: isAdmin && panel === 'ledger' ? '1fr' : '0fr' }}
       >
         <div className="overflow-hidden min-h-0">
           {isAdmin && ledger && (
