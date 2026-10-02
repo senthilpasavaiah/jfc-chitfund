@@ -15,11 +15,13 @@ import ReportsPage from './pages/ReportsPage';
 import CalculatorPage from './pages/CalculatorPage';
 import ProfilePage from './pages/ProfilePage';
 import ActivityLogPage from './pages/ActivityLogPage';
+import ActivityTracker from './components/ActivityTracker';
 
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ActivityTracker />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route
