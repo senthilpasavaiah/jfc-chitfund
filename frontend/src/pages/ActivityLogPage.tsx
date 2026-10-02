@@ -59,15 +59,23 @@ function metadataObject(metadata: Record<string, unknown> | null) {
 function durationLabel(ms: unknown) { const n = Math.max(0, Number(ms) || 0); if (n < 1000) return '—'; const total = Math.round(n / 1000); const m = Math.floor(total / 60); const s = total % 60; if (m >= 60) return `${Math.floor(m / 60)}h ${m % 60}m`; return m ? `${m}m ${s}s` : `${s}s`; }
 function pagePath(row: ActivityRow) { const m = metadataObject(row.metadata); return String(m.path || row.entity_id || '—'); }
 function humanDetails(row: ActivityRow) {
-  const m = metadataObject(row.metadata);
-  const name = m.memberName || m.member_name || m.name;
-  const chit = m.chitName || m.chit_name;
-  const month = m.monthNumber || m.month_number;
-  const amount = m.amount;
-  const page = m.path;
-  const duration = m.durationMs;
-  const parts = [page ? `Page: ${page}` : '', duration ? `Time: ${durationLabel(duration)}` : '', name ? `Member: ${name}` : '', chit ? `Chit: ${chit}` : '', month ? `Month: ${month}` : '', amount !== undefined ? `Amount: ₹${amount}` : ''].filter(Boolean);
-  return parts.length ? parts.join(' • ') : 'No additional summary was recorded.';
+  const metadata = metadataObject(row.metadata);
+  const name = metadata.memberName || metadata.member_name || metadata.name;
+  const chit = metadata.chitName || metadata.chit_name;
+  const month = metadata.monthNumber || metadata.month_number;
+  const amount = metadata.amount;
+  const page = metadata.path;
+  const duration = metadata.durationMs;
+
+  const parts: string[] = [];
+  if (page) parts.push(`Page: ${String(page)}`);
+  if (duration) parts.push(`Time: ${durationLabel(duration)}`);
+  if (name) parts.push(`Member: ${String(name)}`);
+  if (chit) parts.push(`Chit: ${String(chit)}`);
+  if (month) parts.push(`Month: ${String(month)}`);
+  if (amount !== undefined) parts.push(`Amount: ₹${String(amount)}`);
+
+  return parts.length > 0 ? parts.join(' • ') : 'No additional summary was recorded.';
 }
 function getBeforeAfter(metadata: Record<string, unknown> | null) {
   const m = metadataObject(metadata);
