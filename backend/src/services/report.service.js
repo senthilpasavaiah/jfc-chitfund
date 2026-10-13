@@ -18,7 +18,7 @@ function resolveRange({ period, from, to }) {
     // next-day boundary so the whole selected "To" date is included, regardless
     // of the transaction's time of day or server timezone.
     let toExclusive = null;
-    if (/^\\d{4}-\\d{2}-\\d{2}$/.test(String(to))) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(to))) {
       toExclusive = new Date(`${to}T00:00:00.000Z`);
       toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
     }
