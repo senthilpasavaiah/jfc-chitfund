@@ -26,7 +26,7 @@ async function list({ category, from, to, toExclusive } = {}) {
     conditions.push(`spent_at < $${params.length}`);
   } else if (to) {
     params.push(to);
-    conditions.push(`spent_at <= ${params.length}`);
+    conditions.push(`spent_at <= $${params.length}`);
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const { rows } = await query(`SELECT * FROM expenses ${where} ORDER BY spent_at DESC`, params);
