@@ -11,8 +11,20 @@ const PERIOD_MONTHS = {
 };
 
 function resolveRange({ period, from, to }) {
-  if (from && to) return { from: new Date(from), to: new Date(to) };
-  if (period === 'historical' || !period) return { from: null, to: null };
+  if (from && to) {
+    const start = new Date(from);
+    const end = new Date(to);
+    // Date-picker values are calendar dates, not timestamps. Use an exclusive
+    // next-day boundary so the whole selected "To" date is included, regardless
+    // of the transaction's time of day or server timezone.
+    let toExclusive = null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(to))) {
+      toExclusive = new Date(`${to}T00:00:00.000Z`);
+      toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
+    }
+    return { from: start, to: end, toExclusive };
+  }
+  if (period === 'historical' || !period) return { from: null, to: null, toExclusive: null };
 
   const months = PERIOD_MONTHS[period];
   if (!months) throw new Error(`Unknown period: ${period}`);
@@ -20,7 +32,7 @@ function resolveRange({ period, from, to }) {
   const to_ = new Date();
   const from_ = new Date();
   from_.setMonth(from_.getMonth() - months);
-  return { from: from_, to: to_ };
+  return { from: from_, to: to_, toExclusive: null };
 }
 
 /** True when `date` falls within `range`. An unbounded range (all-time) always matches. */
@@ -28,7 +40,7 @@ function inRange(date, range) {
   if (!range.from || !range.to) return true;
   if (!date) return false;
   const d = new Date(date);
-  return d >= range.from && d <= range.to;
+  return d >= range.from && (range.toExclusive ? d < range.toExclusive : d <= range.to);
 }
 
 function round2(n) {
@@ -80,7 +92,7 @@ async function buildReport({ period, from, to }) {
   // just hidden in the UI - rather than listing it as a padded zero row.
   const allChits = await chitService.list({});
   const applicableChits = range.to
-    ? allChits.filter((c) => !c.startDate || new Date(c.startDate) <= range.to)
+    ? allChits.filter((c) => !c.startDate || (range.toExclusive ? new Date(c.startDate) < range.toExclusive : new Date(c.startDate) <= range.to))
     : allChits;
   const chitRows = await Promise.all(
     applicableChits.map(async (c) => {
@@ -148,7 +160,7 @@ async function buildReport({ period, from, to }) {
   const otherIncome = donationTotal + santhaTotal;
 
   // --- Association expenses: the office/miscellaneous expenses ledger. ---
-  const expenseRows = await expenseService.list({ from: range.from, to: range.to });
+  const expenseRows = await expenseService.list({ from: range.from, to: range.to, toExclusive: range.toExclusive });
   const operatingExpenses = expenseRows.reduce((s, e) => s + Number(e.amount), 0);
 
   const chitIncome = liveChitIncome + historicalChitIncome;

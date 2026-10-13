@@ -10,7 +10,7 @@ async function create({ category, description, amount, spentAt }, recordedById) 
   return rows[0];
 }
 
-async function list({ category, from, to } = {}) {
+async function list({ category, from, to, toExclusive } = {}) {
   const conditions = [];
   const params = [];
   if (category) {
@@ -21,7 +21,10 @@ async function list({ category, from, to } = {}) {
     params.push(from);
     conditions.push(`spent_at >= $${params.length}`);
   }
-  if (to) {
+  if (toExclusive) {
+    params.push(toExclusive);
+    conditions.push(`spent_at < $${params.length}`);
+  } else if (to) {
     params.push(to);
     conditions.push(`spent_at <= $${params.length}`);
   }

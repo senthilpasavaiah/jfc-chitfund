@@ -54,6 +54,8 @@ jobs:
           node --check src/services/notification.service.js
           node --check src/services/notificationScheduler.service.js
           node --check src/services/payment.service.js
+          node --check src/services/report.service.js
+          node --check src/services/expense.service.js
           node --check src/services/paymentProof.service.js
           node --check src/services/whatsappPaymentAction.service.js
           node --check src/controllers/whatsappPaymentAction.controller.js
