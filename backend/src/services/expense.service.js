@@ -23,7 +23,7 @@ async function list({ category, from, to, toExclusive } = {}) {
   }
   if (toExclusive) {
     params.push(toExclusive);
-    conditions.push(`spent_at < ${params.length}`);
+    conditions.push(`spent_at < $${params.length}`);
   } else if (to) {
     params.push(to);
     conditions.push(`spent_at <= ${params.length}`);
