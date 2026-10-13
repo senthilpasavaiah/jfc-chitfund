@@ -22,6 +22,7 @@ interface ChitSummaryRow {
 
 interface ReportData {
   period: string;
+  range: { from: string | null; to: string | null };
   paymentCollections: {
     expected: number;
     collected: number;
@@ -203,7 +204,6 @@ export default function ReportsPage() {
     client.get('/reports', { params: paramsForThisFetch }).then((res) => {
       setReport(res.data.data);
       setLastQueryParams(paramsForThisFetch);
-      setLoading(false);
       if (period === 'custom' && customFrom && customTo) {
         // Custom-period data has displayed successfully - reset the date
         // fields to blank so the user must pick fresh dates next time.
@@ -212,7 +212,10 @@ export default function ReportsPage() {
         setCustomFrom('');
         setCustomTo('');
       }
-    });
+    }).catch(() => {
+      setReport(null);
+      setLastQueryParams(null);
+    }).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [management, period, customFrom, customTo]);
 
@@ -378,6 +381,45 @@ export default function ReportsPage() {
         <p className="text-ink-muted">Loading…</p>
       ) : report ? (
         <>
+          {/* On-screen letterhead preview uses the same A4 artwork as the PDF export. */}
+          <section className="ledger-card p-3 sm:p-5 space-y-2">
+            <div className="text-sm font-semibold text-ink">Report preview on JFC letterhead</div>
+            <div className="mx-auto relative w-full max-w-[760px] aspect-[210/297] overflow-hidden border border-line bg-white shadow-sm">
+              <img
+                src="https://raw.githubusercontent.com/senthilpasavaiah/jfc-chitfund/15dc1fa39894ed877568a5738e60d19853e7ac44/backend/assets/letterhead.png"
+                alt="Jolly Friends Club official report letterhead"
+                className="absolute inset-0 h-full w-full object-fill"
+              />
+              <div className="absolute inset-x-[7%] top-[10%] bottom-[7%] overflow-hidden text-[#193250]">
+                <h2 className="text-center text-base sm:text-xl font-bold">ASSOCIATION FINANCIAL REPORT</h2>
+                <p className="text-center text-[10px] sm:text-xs mt-1 mb-4">
+                  Period: {report.range.from ? report.range.from.slice(0, 10) : 'All records'} — {report.range.to ? report.range.to.slice(0, 10) : 'Today'}
+                </p>
+                <div className="grid grid-cols-3 gap-2 border-y border-[#B8863E] py-3 mb-4 text-center">
+                  <div><div className="text-[8px] sm:text-[10px] uppercase">Income</div><div className="font-bold text-[10px] sm:text-sm">{formatINR(report.association.income.total)}</div></div>
+                  <div><div className="text-[8px] sm:text-[10px] uppercase">Expenses</div><div className="font-bold text-[10px] sm:text-sm">{formatINR(report.association.expenses.total)}</div></div>
+                  <div><div className="text-[8px] sm:text-[10px] uppercase">Net Surplus</div><div className="font-bold text-[10px] sm:text-sm">{formatINR(report.association.netProfit)}</div></div>
+                </div>
+                <h3 className="font-bold text-[10px] sm:text-xs border-b border-[#D8DCE3] pb-1 mb-1">Income breakdown</h3>
+                <table className="w-full text-[8px] sm:text-[10px] mb-3">
+                  <tbody>
+                    {report.incomeBreakdown.map((row) => <tr key={row.label}><td className="py-1 pr-2">{row.label}</td><td className="py-1 text-right whitespace-nowrap">{formatINR(row.amount)}</td></tr>)}
+                    <tr className="border-t border-[#D8DCE3] font-bold"><td className="py-1">Total Income</td><td className="py-1 text-right">{formatINR(report.association.income.total)}</td></tr>
+                  </tbody>
+                </table>
+                <h3 className="font-bold text-[10px] sm:text-xs border-b border-[#D8DCE3] pb-1 mb-1">Expense breakdown</h3>
+                <table className="w-full text-[8px] sm:text-[10px]">
+                  <tbody>
+                    {report.expenseBreakdown.map((row) => <tr key={row.label}><td className="py-1 pr-2">{row.label}</td><td className="py-1 text-right whitespace-nowrap">{formatINR(row.amount)}</td></tr>)}
+                    <tr className="border-t border-[#D8DCE3] font-bold"><td className="py-1">Total Expenses</td><td className="py-1 text-right">{formatINR(report.association.expenses.total)}</td></tr>
+                  </tbody>
+                </table>
+                <p className="mt-4 border-t border-[#B8863E] pt-2 text-[8px] sm:text-[10px] text-center">Detailed collection and chit-wise tables are available below this preview.</p>
+              </div>
+            </div>
+            <p className="text-xs text-ink-muted">On-screen summary preview using the same letterhead artwork as the PDF download. Full interactive report details remain below.</p>
+          </section>
+
           {/* Headline: Income, Expenses, Net at a glance */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="ledger-card p-5">
