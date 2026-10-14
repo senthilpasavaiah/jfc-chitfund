@@ -116,6 +116,8 @@ export default function ReportsPage() {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [report, setReport] = useState<ReportData | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [letterheadFailed, setLetterheadFailed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [mgmt, setMgmt] = useState<ManagementSplit | null>(null);
@@ -197,9 +199,11 @@ export default function ReportsPage() {
       }
       setReport(null);
       setLastQueryParams(null);
+      setReportError(null);
       return;
     }
     setLoading(true);
+    setReportError(null);
     const paramsForThisFetch = queryParams;
     client.get('/reports', { params: paramsForThisFetch }).then((res) => {
       setReport(res.data.data);
@@ -212,9 +216,11 @@ export default function ReportsPage() {
         setCustomFrom('');
         setCustomTo('');
       }
-    }).catch(() => {
+    }).catch((error: unknown) => {
       setReport(null);
       setLastQueryParams(null);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      setReportError(`Could not load the report. ${message}. Please retry; your records have not been changed.`);
     }).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [management, period, customFrom, customTo]);
@@ -378,18 +384,29 @@ export default function ReportsPage() {
       </div>
 
       {loading ? (
-        <p className="text-ink-muted">Loading…</p>
+        <p className="text-ink-muted">Loading report…</p>
+      ) : reportError ? (
+        <section className="ledger-card p-4 space-y-2" role="alert">
+          <p className="font-semibold text-red-700">Report could not be displayed</p>
+          <p className="text-sm text-ink-muted">{reportError}</p>
+          <button type="button" className="rounded-lg border border-line px-3 py-2 text-sm" onClick={() => { setReportError(null); setPeriod((current) => current); setLoading(true); client.get('/reports', { params: lastQueryParams || queryParams }).then((res) => { setReport(res.data.data); setLastQueryParams(lastQueryParams || queryParams); }).catch((error: unknown) => { const message = error instanceof Error ? error.message : 'Unknown error'; setReportError(`Could not load the report. ${message}. Please retry.`); }).finally(() => setLoading(false)); }}>Retry report</button>
+        </section>
       ) : report ? (
         <>
           {/* On-screen letterhead preview uses the same A4 artwork as the PDF export. */}
           <section className="ledger-card p-3 sm:p-5 space-y-2">
             <div className="text-sm font-semibold text-ink">Report preview on JFC letterhead</div>
             <div className="mx-auto relative w-full max-w-[760px] aspect-[210/297] overflow-hidden border border-line bg-white shadow-sm">
-              <img
-                src="https://raw.githubusercontent.com/senthilpasavaiah/jfc-chitfund/15dc1fa39894ed877568a5738e60d19853e7ac44/backend/assets/letterhead.png"
-                alt="Jolly Friends Club official report letterhead"
-                className="absolute inset-0 h-full w-full object-fill"
-              />
+              {!letterheadFailed ? (
+                <img
+                  src="https://raw.githubusercontent.com/senthilpasavaiah/jfc-chitfund/15dc1fa39894ed877568a5738e60d19853e7ac44/backend/assets/letterhead.png"
+                  alt="Jolly Friends Club official report letterhead"
+                  className="absolute inset-0 h-full w-full object-fill"
+                  onError={() => setLetterheadFailed(true)}
+                />
+              ) : (
+                <div className="absolute inset-0 bg-white" aria-hidden="true" />
+              )}
               <div className="absolute inset-x-[7%] top-[10%] bottom-[7%] overflow-hidden text-[#193250]">
                 <h2 className="text-center text-base sm:text-xl font-bold">ASSOCIATION FINANCIAL REPORT</h2>
                 <p className="text-center text-[10px] sm:text-xs mt-1 mb-4">
