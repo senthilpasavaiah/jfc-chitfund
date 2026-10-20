@@ -58,6 +58,32 @@ export default function ActivityTracker() {
   }, [location.pathname, location.search]);
 
   useEffect(() => {
+    if (loading || !user) return undefined;
+    const report = (source: string, message: string, stack = '') => {
+      const sessionId = sessionStorage.getItem('jfc_activity_session_id') || '';
+      client.post('/activity-tracking/error', {
+        path: window.location.pathname + window.location.search,
+        sessionId,
+        source,
+        message,
+        stack,
+        userAgent: navigator.userAgent,
+      }).catch(() => {});
+    };
+    const onError = (event: ErrorEvent) => report('runtime', event.message || 'Runtime error', event.error?.stack || '');
+    const onRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      report('unhandled-rejection', reason?.message || String(reason || 'Unhandled promise rejection'), reason?.stack || '');
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, [loading, user]);
+
+  useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
         visibleStartedAt.current = Date.now();

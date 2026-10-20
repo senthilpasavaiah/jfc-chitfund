@@ -39,6 +39,52 @@ router.post('/page-view', async (req, res) => {
   }
 });
 
+router.post('/error', async (req, res) => {
+  const { path, sessionId, source, message, status, method, endpoint, stack, userAgent } = req.body || {};
+  try {
+    const metadata = {
+      path: cleanText(path, 500),
+      sessionId: cleanText(sessionId, 100),
+      source: cleanText(source, 50),
+      message: cleanText(message, 1000),
+      status: Number(status) || null,
+      method: cleanText(method, 20),
+      endpoint: cleanText(endpoint, 500),
+      stack: cleanText(stack, 2000),
+      userAgent: cleanText(userAgent, 500),
+    };
+    await query(
+      `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, metadata, ip_address)
+       VALUES ($1, 'FRONTEND_ERROR', 'ERROR', $2, $3, $4)`,
+      [req.user.id, metadata.path || metadata.endpoint || 'frontend', JSON.stringify(metadata), req.ip || null]
+    );
+  } catch (error) {
+    console.error('Failed to record frontend error', error.message);
+  }
+  res.status(202).json({ success: true });
+});
+
+router.get('/journey/:sessionId', async (req, res) => {
+  try {
+    const sessionId = cleanText(req.params.sessionId, 100);
+    const { rows } = await query(
+      `SELECT a.id, a.action, a.entity_id, a.metadata, a.created_at,
+              COALESCE(m.name, u.phone) AS actor_name
+         FROM audit_logs a
+         LEFT JOIN users u ON u.id = a.user_id
+         LEFT JOIN members m ON m.user_id = u.id
+        WHERE a.user_id = $1
+          AND a.action IN ('PAGE_VIEW', 'FRONTEND_ERROR')
+          AND COALESCE(a.metadata->>'sessionId', '') = $2
+        ORDER BY a.created_at ASC`,
+      [req.user.id, sessionId]
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Could not load session journey.' });
+  }
+});
+
 router.post('/page-view/heartbeat', async (req, res) => {
   const { activityId, durationMs, visibility = 'visible' } = req.body || {};
   if (!activityId) return res.status(400).json({ success: false, message: 'activityId is required' });
