@@ -396,6 +396,23 @@ function toPDF(report) {
       })),
     });
 
+    const details = report.transactionDetails || { chits: [], otherIncome: [], operatingExpenses: [] };
+    function addDetailsHeading(title) {
+      ensureSpace(38); doc.moveDown(0.7); doc.font('Helvetica-Bold').fontSize(11).fillColor(NAVY_HEX).text(title, PAGE_MARGINS.left, doc.y); doc.moveDown(0.35);
+    }
+    const detailColumns = [{ label: 'Date', width: 0.2, align: 'left' }, { label: 'Type', width: 0.22, align: 'left' }, { label: 'Details', width: 0.38, align: 'left' }, { label: 'Amount', width: 0.2, align: 'right' }];
+    function dateLabel(value) { if (!value) return 'Undated'; const date = new Date(value); return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }); }
+    addDetailsHeading('Dated Transaction Details');
+    for (const chit of details.chits) {
+      ensureSpace(36); doc.font('Helvetica-Bold').fontSize(10).fillColor(NAVY_HEX).text(chit.refNumber, PAGE_MARGINS.left, doc.y); doc.moveDown(0.25);
+      if (chit.error) { doc.font('Helvetica').fontSize(9).fillColor('#8A3333').text('Dated entries could not be loaded for this chit.', PAGE_MARGINS.left, doc.y); doc.moveDown(0.5); continue; }
+      drawTable({ columns: detailColumns, rows: chit.entries.map((e) => ({ values: [dateLabel(e.date), e.type, e.category, formatINR(e.amount)] })), rowH: 20, headerRowH: 21 });
+    }
+    addDetailsHeading('Other Income — Donations and Santha');
+    drawTable({ columns: detailColumns, rows: details.otherIncome.map((r) => ({ values: [dateLabel(r.date), r.source, r.details, formatINR(r.amount)] })), rowH: 20, headerRowH: 21 });
+    addDetailsHeading('Office & Miscellaneous Expenses');
+    drawTable({ columns: detailColumns, rows: details.operatingExpenses.map((r) => ({ values: [dateLabel(r.date), r.category, r.details, formatINR(r.amount)] })), rowH: 20, headerRowH: 21 });
+
     doc.end();
   });
 }

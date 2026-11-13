@@ -109,6 +109,7 @@ async function buildReport({ period, from, to }) {
           income: round2(income),
           expense: round2(expense),
           net: round2(income - expense),
+          entries: entries.map((e) => ({ date: e.entry_date, type: e.type, category: e.category, amount: round2(Number(e.amount)) })),
         };
       } catch (err) {
         // A chit with bad data (e.g. missing value_lakh - see
@@ -122,6 +123,7 @@ async function buildReport({ period, from, to }) {
           income: 0,
           expense: 0,
           net: 0,
+          entries: [],
           error: err.message,
         };
       }
@@ -162,6 +164,8 @@ async function buildReport({ period, from, to }) {
   // --- Association expenses: the office/miscellaneous expenses ledger. ---
   const expenseRows = await expenseService.list({ from: range.from, to: range.to, toExclusive: range.toExclusive });
   const operatingExpenses = expenseRows.reduce((s, e) => s + Number(e.amount), 0);
+  const datedDonations = donationRows.filter((d) => inRange(d.donated_at, range)).map((d) => ({ date: d.donated_at, source: 'Donation', details: d.member_name || 'Donation', amount: round2(Number(d.amount)) }));
+  const datedSantha = santhaRows.filter((s) => inRange(s.entry_date, range)).map((s) => ({ date: s.entry_date, source: 'Santha Collection', details: [s.member_name, s.round_label].filter(Boolean).join(' · ') || 'Santha Collection', amount: round2(Number(s.amount)) }));
 
   const chitIncome = liveChitIncome + historicalChitIncome;
   const totalIncome = chitIncome + otherIncome;
@@ -219,7 +223,13 @@ async function buildReport({ period, from, to }) {
       { label: 'Office & Miscellaneous Expenses', amount: round2(operatingExpenses) },
     ],
 
-    chitSummary: [...chitRows, ...historicalChitRows],
+    chitSummary: [...chitRows.map(({ entries, ...row }) => row), ...historicalChitRows],
+
+    transactionDetails: {
+      chits: chitRows.filter((c) => c.entries?.length || c.error).map((c) => ({ refNumber: c.refNumber, entries: c.entries || [], error: c.error })),
+      otherIncome: [...datedDonations, ...datedSantha].sort((a, b) => new Date(a.date) - new Date(b.date)),
+      operatingExpenses: expenseRows.map((e) => ({ date: e.spent_at, category: e.category, details: e.description || e.category, amount: round2(Number(e.amount)) })).sort((a, b) => new Date(a.date) - new Date(b.date)),
+    },
 
     meta: {
       historicalRecordsIncluded: isAllTime,

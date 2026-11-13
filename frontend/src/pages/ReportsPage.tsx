@@ -40,6 +40,11 @@ interface ReportData {
   incomeBreakdown: IncomeExpenseRow[];
   expenseBreakdown: IncomeExpenseRow[];
   chitSummary: ChitSummaryRow[];
+  transactionDetails: {
+    chits: { refNumber: string; entries: { date: string | null; type: 'income' | 'expense'; category: string; amount: number }[]; error?: string }[];
+    otherIncome: { date: string | null; source: string; details: string; amount: number }[];
+    operatingExpenses: { date: string | null; category: string; details: string; amount: number }[];
+  };
   meta: { historicalRecordsIncluded: boolean };
 }
 
@@ -53,6 +58,10 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = [
 
 function formatINR(amount: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+}
+function formatReportDate(value: string | null) {
+  if (!value) return 'Undated';
+  return new Date(value).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' });
 }
 function Metric({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
   return (
@@ -575,6 +584,7 @@ export default function ReportsPage() {
               Member-by-member payment status for a chit is on that chit's own detail page, not here.
             </p>
           </div>
+          <DatedTransactionDetails details={report.transactionDetails} rangeLabel={rangeLabel} />
         </>
       ) : canQuery ? (
         <p className="text-danger">Could not load report.</p>
@@ -587,4 +597,13 @@ export default function ReportsPage() {
       )}
     </div>
   );
+}
+
+
+type DatedRow = { date: string | null; type: string; details: string; amount: number };
+function DatedRows({ title, rows }: { title: string; rows: DatedRow[] }) {
+  return <section className="ledger-card overflow-hidden"><div className="px-5 py-3 border-b border-line font-medium">{title}</div>{rows.length === 0 ? <p className="px-4 py-3 text-sm text-ink-muted">No entries in this period.</p> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-paper text-ink-muted text-xs uppercase tracking-wide"><tr><th className="text-left px-4 py-2">Date</th><th className="text-left px-4 py-2">Type</th><th className="text-left px-4 py-2">Details</th><th className="text-right px-4 py-2">Amount</th></tr></thead><tbody>{rows.map((row, index) => <tr key={index} className="border-t border-line"><td className="px-4 py-2.5 whitespace-nowrap">{formatReportDate(row.date)}</td><td className="px-4 py-2.5">{row.type}</td><td className="px-4 py-2.5">{row.details}</td><td className="px-4 py-2.5 text-right font-tabular">{formatINR(row.amount)}</td></tr>)}</tbody></table></div>}</section>;
+}
+function DatedTransactionDetails({ details, rangeLabel }: { details: ReportData['transactionDetails']; rangeLabel: string }) {
+  return <section className="space-y-4"><div><h2 className="text-lg font-semibold text-navy">Dated Transaction Details</h2><p className="text-xs text-ink-muted mt-1">Individual entries included in the totals above, from {rangeLabel}.</p></div>{details.chits.map((chit) => <section key={chit.refNumber} className="ledger-card overflow-hidden"><div className="px-5 py-3 border-b border-line font-medium">{chit.refNumber}</div>{chit.error ? <p className="px-4 py-3 text-sm text-danger">Could not load this chit’s dated entries.</p> : chit.entries.length === 0 ? <p className="px-4 py-3 text-sm text-ink-muted">No entries in this period.</p> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-paper text-ink-muted text-xs uppercase tracking-wide"><tr><th className="text-left px-4 py-2">Date</th><th className="text-left px-4 py-2">Type</th><th className="text-left px-4 py-2">Details</th><th className="text-right px-4 py-2">Amount</th></tr></thead><tbody>{chit.entries.map((entry, index) => <tr key={index} className="border-t border-line"><td className="px-4 py-2.5 whitespace-nowrap">{formatReportDate(entry.date)}</td><td className="px-4 py-2.5 capitalize">{entry.type}</td><td className="px-4 py-2.5">{entry.category}</td><td className="px-4 py-2.5 text-right font-tabular">{formatINR(entry.amount)}</td></tr>)}</tbody></table></div>}</section>)}<DatedRows title="Other Income — Donations and Santha" rows={details.otherIncome.map((r) => ({ date: r.date, type: r.source, details: r.details, amount: r.amount }))} /><DatedRows title="Office & Miscellaneous Expenses" rows={details.operatingExpenses.map((r) => ({ date: r.date, type: r.category, details: r.details, amount: r.amount }))} /></section>;
 }
